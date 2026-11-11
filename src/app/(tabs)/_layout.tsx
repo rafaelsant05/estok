@@ -1,7 +1,9 @@
 import type { ComponentProps } from 'react';
+import { Pressable } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { cores } from '../../constants/cores';
+import { useAuthStore } from '../../store/useAuthStore';
 
 type NomeIcone = ComponentProps<typeof Ionicons>['name'];
 
@@ -12,11 +14,18 @@ function icone(nome: NomeIcone) {
 }
 
 export default function TabsLayout() {
+  const logout = useAuthStore((estado) => estado.logout);
+
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: cores.primaria,
         headerTitleAlign: 'center',
+        headerRight: () => (
+          <Pressable onPress={logout} style={{ marginRight: 16 }} accessibilityLabel="Sair">
+            <Ionicons name="log-out-outline" size={24} color={cores.primaria} />
+          </Pressable>
+        ),
       }}
     >
       <Tabs.Screen
