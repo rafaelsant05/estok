@@ -8,6 +8,7 @@ import Loading from '../../components/Loading';
 import Feedback from '../../components/Feedback';
 import ResumoCard from '../../components/ResumoCard';
 import ItemEstoqueBaixo from '../../components/ItemEstoqueBaixo';
+import Botao from '../../components/Botao';
 
 export default function Inicio() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function Inicio() {
     return <Loading mensagem="Carregando produtos..." />;
   }
 
-  // Tudo que fica acima da lista (saudação, cards, título)
+  // Tudo que fica acima da lista (saudação, cards, botão, título)
   const cabecalho = (
     <View>
       {erro && erroVisivel ? (
@@ -63,6 +64,14 @@ export default function Inicio() {
           titulo="Estoque baixo"
           valor={estoqueBaixo.length}
           cor={estoqueBaixo.length > 0 ? cores.erro : cores.sucesso}
+        />
+      </View>
+
+      {/* Botão que abre o scanner */}
+      <View style={styles.botaoScanner}>
+        <Botao
+          titulo="Escanear código de barras"
+          onPress={() => router.push('/scanner')}
         />
       </View>
 
@@ -106,7 +115,8 @@ const styles = StyleSheet.create({
   tela: { flex: 1, backgroundColor: cores.fundo },
   conteudo: { padding: 16 },
   saudacao: { fontSize: 18, fontWeight: '600', color: cores.texto, marginBottom: 16 },
-  cards: { flexDirection: 'row', gap: 8, marginBottom: 24 },
+  cards: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  botaoScanner: { marginBottom: 24 },
   secao: { fontSize: 16, fontWeight: 'bold', color: cores.texto, marginBottom: 8 },
   vazio: { textAlign: 'center', color: cores.texto, opacity: 0.6, marginTop: 24 },
 });
