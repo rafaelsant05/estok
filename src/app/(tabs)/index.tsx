@@ -9,6 +9,7 @@ import Feedback from '../../components/Feedback';
 import ResumoCard from '../../components/ResumoCard';
 import ItemEstoqueBaixo from '../../components/ItemEstoqueBaixo';
 import Botao from '../../components/Botao';
+import { notificarEstoqueBaixo } from '../../services/notificacoes';
 
 export default function Inicio() {
   const router = useRouter();
@@ -38,6 +39,14 @@ export default function Inicio() {
   const estoqueBaixo = produtos
     .filter((p) => p.quantidade <= p.estoqueMinimo)
     .sort((a, b) => a.quantidade - b.quantidade); // mais críticos primeiro
+
+  // Avisa sobre estoque baixo (só depois de carregar).
+  // Fica ANTES do return condicional, porque hooks não podem vir depois dele.
+  useEffect(() => {
+    if (!carregando && estoqueBaixo.length > 0) {
+      notificarEstoqueBaixo(estoqueBaixo.length);
+    }
+  }, [carregando, estoqueBaixo.length]);
 
   // Primeira carga (lista vazia): mostra só o Loading
   if (carregando && produtos.length === 0 && !atualizando) {
