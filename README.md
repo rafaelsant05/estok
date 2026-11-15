@@ -2,23 +2,39 @@ Estok
 
 Aplicativo mobile de controle de estoque para MEI (Microempreendedor Individual), desenvolvido em React Native com Expo e Firebase como projeto final da disciplina de Desenvolvimento Mobile.
 
-Muitos MEIs ainda controlam o estoque em caderno ou de cabeça. O Estok permite cadastrar produtos, registrar entradas e saídas e saber o que está acabando, tudo pelo celular.
+O problema
 
-O escopo do app é somente estoque: não há vendas, preços, lucro ou margem.
+Muitos MEIs ainda controlam o estoque em caderno ou de cabeça. Sem um controle confiável, descobrem que um produto acabou só quando o cliente pede, e perdem a venda.
 
+O Estok permite cadastrar produtos, registrar entradas e saídas, receber o alerta de estoque baixo e localizar um produto pelo código de barras, tudo pelo celular.
+
+Público-alvo: microempreendedores individuais e pequenos comércios.
+Escopo: somente estoque. O app não trata de vendas, preços, lucro ou margem.
 Funcionalidades
- Login e cadastro de usuários (Firebase Authentication), com validação dos campos
- Cada usuário enxerga apenas os próprios dados
- Navegação com Stack e Bottom Tabs (Início, Produtos e Movimentações)
- Camada de dados de produtos no Firestore (criar, listar, buscar, editar e remover)
- Lista de produtos com busca e filtro por categoria
- Cadastro e edição de produtos com validação e foto
- Entradas e saídas de estoque, com histórico
- Tela inicial com resumo e produtos com estoque baixo
- Leitura de código de barras com a câmera
-
-Marque as caixas [x] conforme as funcionalidades forem concluídas.
-
+[x] Cadastro e login de usuários (Firebase Authentication), com validação dos campos
+[x] Cada usuário enxerga apenas os próprios dados
+[x] Navegação com Stack e Bottom Tabs (Início, Produtos e Movimentações)
+[x] Lista de produtos com busca por nome e filtro por categoria, com destaque para estoque baixo
+[x] Cadastro e edição de produtos com validação
+[x] Entradas e saídas de estoque, com histórico e filtro por tipo
+[x] Saída maior que o estoque é recusada (registro feito em transação do Firestore)
+[x] Tela inicial com resumo (total de produtos e de itens) e lista de produtos com estoque baixo
+[x] Leitura de código de barras com a câmera, com campo para digitar o código manualmente
+[x] Notificação local de estoque baixo
+[x] Foto do produto (galeria ou câmera)
+Requisitos do projeto e onde estão no código
+Requisito	Onde está
+Componentização e reuso	src/components: Botao, Input, Loading e Feedback são usados em todas as telas; CardProduto, CardMovimentacao, FormMovimentacao, ResumoCard e ItemEstoqueBaixo são específicos
+Layout responsivo com Flexbox	Todas as telas, com StyleSheet e flexDirection, flex e gap
+Navegação (Expo Router)	src/app: Stack raiz, grupo (auth) e grupo (tabs) com Bottom Tabs
+Estado local	useState e useEffect nas telas e formulários
+Estado global	Zustand: useAuthStore (usuário logado) e useProdutosStore (produtos, compartilhado entre Início, Produtos e Movimentações)
+Formulários com validação	Login, cadastro, produto e movimentação, com mensagem de erro em cada campo
+Feedback visual	Loading, Feedback (erro, sucesso e aviso) e mensagens de lista vazia
+Recursos nativos	Câmera (expo-camera, leitor de código de barras), notificações locais (expo-notifications), seletor de data (@react-native-community/datetimepicker) e galeria e câmera (expo-image-picker)
+Ícones vetoriais	@expo/vector-icons
+Firebase	Firestore (leitura, gravação, edição e remoção) e Authentication
+Git Flow	Veja a seção Fluxo de trabalho
 Tecnologias
 Tecnologia	Uso
 React Native + Expo	Aplicativo mobile
@@ -28,18 +44,12 @@ Firebase Authentication	Login e cadastro
 Cloud Firestore	Banco de dados NoSQL
 Zustand	Estado global
 expo-camera	Leitor de código de barras
+expo-notifications	Notificação local de estoque baixo
+@react-native-community/datetimepicker	Seletor de data das movimentações
 expo-image-picker	Foto do produto
 @expo/vector-icons	Ícones
-Capturas de tela
-
-Adicione aqui os prints ou GIFs das principais telas. Salve as imagens em docs/screenshots/ e referencie assim:
-
-![Login](docs/screenshots/login.png)
-
-Login	Cadastro	Produtos
-em breve	em breve	em breve
 Pré-requisitos
-Node.js versão 20 ou superior
+Node.js versão 20 ou superior (testado com a 22)
 Git
 Um editor de código, como o VS Code
 Um projeto no Firebase (passo a passo abaixo)
@@ -50,6 +60,9 @@ Confira as versões:
 bash
 node -v
 git --version
+
+Ao instalar, o npm pode mostrar avisos EBADENGINE sobre pacotes do Firebase pedirem uma versão mais nova do Node. São apenas avisos e o app funciona normalmente.
+
 Como instalar e rodar
 1. Clonar o repositório
 bash
@@ -102,16 +115,22 @@ Para abrir direto no navegador:
 bash
 npx expo start --web --clear
 
-Alguns recursos nativos, como a câmera e o seletor de data, funcionam melhor no celular ou no emulador do que no navegador.
+Alguns recursos nativos funcionam melhor no celular ou no emulador do que no navegador: a câmera do leitor de código de barras, o seletor de data e as notificações. No navegador, o scanner oferece um campo para digitar o código.
 
 6. Primeiro acesso
 Abra o app e toque em Criar conta.
 Cadastre um e-mail e uma senha com no mínimo 6 caracteres.
 Você será levado às abas Início, Produtos e Movimentações.
 O usuário aparece em Authentication → Usuários no console do Firebase.
+Roteiro de uso
+Em Produtos, toque no botão + e cadastre alguns produtos (nome, categoria, quantidade, estoque mínimo e, se quiser, o código de barras).
+Em Movimentações, toque em Nova movimentação e registre uma entrada (por exemplo, uma compra) e uma saída (por exemplo, uma venda). A quantidade do produto é atualizada na hora.
+Tente registrar uma saída maior que o estoque: o app recusa e mantém o estoque.
+Em Início, veja o resumo e a lista dos produtos com estoque abaixo do mínimo.
+Em Escanear código de barras, leia (ou digite) o código de um produto para abri-lo. Se o código não existir, o app oferece cadastrá-lo.
 Regras de segurança do Firestore
 
-Depois que o modo de teste expirar (ou antes da entrega), publique estas regras em Firestore Database → Regras. Elas permitem que cada usuário leia e grave apenas os próprios dados:
+Depois que o modo de teste expirar, publique estas regras em Firestore Database → Regras. Elas permitem que cada usuário leia e grave apenas os próprios dados:
 
 rules_version = '2';
 service cloud.firestore {
@@ -125,17 +144,20 @@ Estrutura do projeto
 estok/
 ├── src/
 │   ├── app/
-│   │   ├── _layout.tsx            # Stack raiz e redirecionamento por login
-│   │   ├── (auth)/                # login.tsx e cadastro.tsx
-│   │   ├── (tabs)/                # Início, Produtos e Movimentações
-│   │   ├── produto/               # novo.tsx e [id].tsx
-│   │   └── scanner.tsx            # Leitor de código de barras
-│   ├── components/                # Botao, Input, Loading, Feedback...
-│   ├── services/                  # firebase.ts, produtosService.ts, movimentacoesService.ts
-│   ├── store/                     # useAuthStore.ts, useProdutosStore.ts
-│   ├── types/                     # Tipos TypeScript (Produto, Movimentacao)
-│   └── constants/                 # Cores do app
-├── .env.example                   # Modelo das variáveis do Firebase
+│   │   ├── _layout.tsx             # Stack raiz e redirecionamento por login
+│   │   ├── (auth)/                 # login.tsx e cadastro.tsx
+│   │   ├── (tabs)/                 # index.tsx (Início), produtos.tsx e movimentacoes.tsx
+│   │   ├── produto/                # novo.tsx e [id].tsx
+│   │   └── scanner.tsx             # Leitor de código de barras
+│   ├── components/                 # Botao, Input, Loading, Feedback, CardProduto,
+│   │                               # CardMovimentacao, FormMovimentacao,
+│   │                               # ResumoCard e ItemEstoqueBaixo
+│   ├── services/                   # firebase.ts, authErros.ts, produtosService.ts,
+│   │                               # movimentacoesService.ts e notificacoes.ts
+│   ├── store/                      # useAuthStore.ts e useProdutosStore.ts
+│   ├── types/                      # Tipos TypeScript (Produto, Movimentacao)
+│   └── constants/                  # Cores do app
+├── .env.example                    # Modelo das variáveis do Firebase
 └── README.md
 Modelo de dados (Firestore)
 users/{uid}/produtos/{produtoId}
@@ -145,19 +167,31 @@ users/{uid}/produtos/{produtoId}
 users/{uid}/movimentacoes/{movimentacaoId}
     produtoId, produtoNome, tipo ("entrada" | "saida"),
     quantidade, motivo, data
+
+Um produto está com estoque baixo quando quantidade <= estoqueMinimo.
+
 Fluxo de trabalho (Git Flow)
-main: branch protegida. Só recebe código por Pull Request com pelo menos 1 aprovação.
-DEV-Rafael, DEV-Rickson e DEV-Jonathan: branch de desenvolvimento de cada integrante.
+main: branch protegida. Só recebe código por Pull Request com pelo menos 1 aprovação de outro integrante.
+DEV-Rafael, DEV-Rickson, DEV-Jonathan e DEV-Bruno: branch de desenvolvimento de cada integrante, no lugar da develop, conforme combinado com o professor.
 Cada funcionalidade pronta vira um Pull Request da branch pessoal para a main, revisado por outro integrante.
 Commits pequenos e frequentes, no formato feat:, fix:, docs:, style: e chore:.
 Equipe e divisão de tarefas
 Integrante	GitHub	Responsabilidades
-Rafel Carvalho dos Santos (Rafael)	@rafaelsant05	Setup do projeto, Firebase, navegação, componentes base, autenticação (login e cadastro) e documentação
-Rickson Figueiredo Pessanha (Rickson)	@RicksonDeveloper	Produtos: service e store, lista com busca e filtro, formulário de cadastro e edição, foto do produto
-Jonathan Marinho (Jonathan)	@jmarinhorod	Movimentações de estoque, tela inicial com alertas e leitor de código de barras
+Rafael Carvalho dos Santos	@rafaelsant05	Setup do projeto, Firebase, navegação, componentes base, autenticação (login e cadastro), tela da aba Movimentações, integração das partes e documentação
+Rickson Figueiredo Pessanha	@RicksonDeveloper	Produtos: service e store, lista com busca e filtro, formulário de cadastro e edição, foto do produto
+Jonathan Marinho	@jmarinhorod	Movimentações de estoque: service com transação, formulário com validação e card do histórico
+Bruno França	@bruno251142	Tela inicial (painel com resumo e produtos com estoque baixo), leitor de código de barras e notificação de estoque baixo
+Solução de problemas
+Problema	O que fazer
+auth/invalid-api-key	A apiKey do .env está errada. Copie de novo do console do Firebase e reinicie com npx expo start --clear
+Mudei o .env e nada mudou	Pare o servidor (Ctrl+C) e rode de novo com --clear
+Tela em branco no navegador	Abra o Console (F12) e veja a mensagem de erro
+O app não conecta no Expo Go	Celular e computador precisam estar na mesma rede Wi-Fi
+A câmera não abre no navegador	A câmera só funciona no celular. Use o campo para digitar o código
+Os dados não aparecem	Confira se o Firestore foi criado e se o login está ativo
 Vídeo de demonstração
 
-Adicione aqui o link do vídeo (3 a 5 minutos) mostrando o app em funcionamento.
+Assista ao vídeo de demonstração
 
 Licença
 
