@@ -6,7 +6,14 @@ export type Produto = {
   estoqueMinimo: number;
   codigoBarras?: string;
   fotoUri?: string;
+  variantes?: VarianteProduto[];
   criadoEm: number; // timestamp em ms
+};
+
+export type VarianteProduto = {
+  id: string;
+  caracteristica: string;
+  quantidade: number;
 };
 
 export type TipoMovimentacao = 'entrada' | 'saida';
@@ -17,6 +24,8 @@ export type Movimentacao = {
   produtoNome: string;
   tipo: TipoMovimentacao;
   quantidade: number;
+  varianteId?: string;
+  varianteNome?: string;
   motivo: string;
   data: number; // timestamp em ms
 };

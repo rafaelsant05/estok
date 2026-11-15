@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -32,6 +33,9 @@ export default function FormMovimentacao({ visible, onFechar, onSalvo }: Props) 
 
   // Valores dos campos
   const [produtoId, setProdutoId] = useState<string | null>(null);
+  const [varianteId, setVarianteId] = useState('');
+  const [buscaProduto, setBuscaProduto] = useState('');
+  const [categoriaProduto, setCategoriaProduto] = useState('');
   const [tipo, setTipo] = useState<TipoMovimentacao>('entrada');
   const [quantidade, setQuantidade] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -50,6 +54,9 @@ export default function FormMovimentacao({ visible, onFechar, onSalvo }: Props) 
   useEffect(() => {
     if (visible) {
       setProdutoId(null);
+      setVarianteId('');
+      setBuscaProduto('');
+      setCategoriaProduto('');
       setTipo('entrada');
       setQuantidade('');
       setMotivo('');
@@ -65,6 +72,14 @@ export default function FormMovimentacao({ visible, onFechar, onSalvo }: Props) 
   // Os motivos mudam conforme o tipo
   const motivos: readonly string[] =
     tipo === 'entrada' ? MOTIVOS_ENTRADA : MOTIVOS_SAIDA;
+  const categorias = Array.from(new Set(produtos.map((produto) => produto.categoria))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const produtoSelecionado = produtos.find((produto) => produto.id === produtoId);
+  const sugestoesProduto = buscaProduto.trim()
+    ? produtos.filter((produto) =>
+        produto.nome.toLocaleLowerCase('pt-BR').includes(buscaProduto.trim().toLocaleLowerCase('pt-BR')) &&
+        (!categoriaProduto || produto.categoria === categoriaProduto)
+      ).slice(0, 6)
+    : [];
 
   function trocarTipo(novoTipo: TipoMovimentacao) {
     setTipo(novoTipo);
@@ -96,6 +111,9 @@ export default function FormMovimentacao({ visible, onFechar, onSalvo }: Props) 
     if (!produtoId) {
       setErroProduto('Selecione um produto.');
       valido = false;
+    } else if (produtoSelecionado?.variantes?.length && !varianteId) {
+      setErroProduto('Selecione uma característica do produto.');
+      valido = false;
     }
 
     const textoQtd = quantidade.trim();
@@ -116,6 +134,7 @@ export default function FormMovimentacao({ visible, onFechar, onSalvo }: Props) 
     try {
       await registrarMovimentacao(user.uid, {
         produtoId,
+        ...(varianteId && { varianteId }),
         tipo,
         quantidade: qtd,
         motivo,
@@ -152,20 +171,75 @@ export default function FormMovimentacao({ visible, onFechar, onSalvo }: Props) 
             {produtos.length === 0 ? (
               <Text style={styles.aviso}>Nenhum produto cadastrado.</Text>
             ) : (
-              produtos.map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => {
-                    setProdutoId(p.id);
-                    setErroProduto('');
-                  }}
-                  style={[styles.opcao, produtoId === p.id && styles.opcaoAtiva]}
-                >
-                  <Text style={[styles.opcaoTexto, produtoId === p.id && styles.opcaoTextoAtivo]}>
-                    {p.nome} (estoque: {p.quantidade})
-                  </Text>
-                </Pressable>
-              ))
+              <>
+                <View style={styles.buscaProduto}>
+                  <TextInput
+                    value={produtoSelecionado ? `${produtoSelecionado.nome} (estoque: ${produtoSelecionado.quantidade})` : buscaProduto}
+                    onChangeText={(texto) => {
+                      setProdutoId(null);
+                      setBuscaProduto(texto);
+                    }}
+                    placeholder="Digite o nome do produto"
+                    placeholderTextColor={`${cores.texto}80`}
+                    style={styles.campoBuscaProduto}
+                    accessibilityLabel="Pesquisar produto"
+                  />
+                  {!!(produtoSelecionado || buscaProduto) && (
+                    <Pressable onPress={() => { setProdutoId(null); setBuscaProduto(''); }} accessibilityLabel="Limpar produto selecionado">
+                      <Text style={styles.limparBusca}>Limpar</Text>
+                    </Pressable>
+                  )}
+                </View>
+                <View style={styles.chips}>
+                  <Pressable onPress={() => setCategoriaProduto('')} style={[styles.chip, !categoriaProduto && styles.opcaoAtiva]}>
+                    <Text style={[styles.opcaoTexto, !categoriaProduto && styles.opcaoTextoAtivo]}>Todas</Text>
+                  </Pressable>
+                  {categorias.map((categoria) => {
+                    const ativa = categoriaProduto === categoria;
+                    return (
+                      <Pressable key={categoria} onPress={() => setCategoriaProduto(ativa ? '' : categoria)} style={[styles.chip, ativa && styles.opcaoAtiva]}>
+                        <Text style={[styles.opcaoTexto, ativa && styles.opcaoTextoAtivo]}>{categoria}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {sugestoesProduto.length > 0 && (
+                  <View style={styles.listaSugestoes}>
+                    {sugestoesProduto.map((produto) => (
+                      <Pressable key={produto.id} onPress={() => { setProdutoId(produto.id); setVarianteId(''); setBuscaProduto(''); setErroProduto(''); }} style={styles.sugestaoProduto}>
+                        <Text style={styles.opcaoTexto}>{produto.nome} (estoque: {produto.quantidade})</Text>
+                        <Text style={styles.categoriaSugestao}>{produto.categoria}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+                {!!buscaProduto.trim() && sugestoesProduto.length === 0 && (
+                  <Text style={styles.aviso}>Nenhum produto encontrado.</Text>
+                )}
+                {produtoSelecionado?.variantes && produtoSelecionado.variantes.length > 0 && (
+                  <View>
+                    <Text style={styles.rotulo}>Característica</Text>
+                    <View style={styles.chips}>
+                      {produtoSelecionado.variantes.map((variante) => {
+                        const indisponivel = tipo === 'saida' && variante.quantidade === 0;
+                        const selecionada = varianteId === variante.id;
+                        return (
+                          <Pressable
+                            key={variante.id}
+                            disabled={indisponivel}
+                            onPress={() => { setVarianteId(variante.id); setErroProduto(''); }}
+                            style={[styles.chip, selecionada && styles.opcaoAtiva, indisponivel && styles.opcaoIndisponivel]}
+                          >
+                            <Text style={[styles.opcaoTexto, selecionada && styles.opcaoTextoAtivo, indisponivel && styles.textoIndisponivel]}>
+                              {variante.caracteristica} ({variante.quantidade})
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </>
             )}
             {erroProduto !== '' && <Text style={styles.erro}>{erroProduto}</Text>}
 
@@ -301,6 +375,14 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: '#fff',
   },
+  buscaProduto: { minHeight: 44, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: cores.borda, borderRadius: 8, paddingHorizontal: 10, backgroundColor: '#fff' },
+  campoBuscaProduto: { flex: 1, color: cores.texto, paddingVertical: 10 },
+  limparBusca: { color: cores.primaria, fontSize: 13, fontWeight: '600' },
+  listaSugestoes: { borderWidth: 1, borderColor: cores.borda, borderRadius: 8, overflow: 'hidden' },
+  sugestaoProduto: { backgroundColor: '#fff', padding: 10, borderBottomWidth: 1, borderBottomColor: cores.borda },
+  categoriaSugestao: { color: cores.texto, opacity: 0.65, fontSize: 12, marginTop: 2 },
+  opcaoIndisponivel: { opacity: 0.45 },
+  textoIndisponivel: { color: cores.texto },
   opcaoAtiva: { backgroundColor: cores.primaria, borderColor: cores.primaria },
   opcaoTexto: { color: cores.texto },
   opcaoTextoAtivo: { color: '#fff', fontWeight: '600' },

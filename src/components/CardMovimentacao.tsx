@@ -45,6 +45,7 @@ export default function CardMovimentacao({ movimentacao }: Props) {
         <Text style={styles.detalhe}>
           {entrada ? 'Entrada' : 'Saída'} • {rotuloMotivo(movimentacao.motivo)}
         </Text>
+        {!!movimentacao.varianteNome && <Text style={styles.detalhe}>Característica: {movimentacao.varianteNome}</Text>}
         <Text style={styles.detalhe}>{formatarData(movimentacao.data)}</Text>
       </View>
       <Text style={[styles.quantidade, { color: cor }]}>
