@@ -7,6 +7,7 @@ type DadosMovimentacao = {
   produtoId: string;
   tipo: TipoMovimentacao;
   quantidade: number;
+  varianteId?: string;
   motivo: string;
   data: number; // timestamp em milissegundos
 };
@@ -16,7 +17,7 @@ export async function registrarMovimentacao(
   uid: string,
   dados: DadosMovimentacao
 ): Promise<void> {
-  const { produtoId, tipo, quantidade, motivo, data } = dados;
+  const { produtoId, tipo, quantidade, motivo, data, varianteId } = dados;
 
   // Validação básica antes de falar com o Firestore
   if (!Number.isInteger(quantidade) || quantidade <= 0) {
@@ -39,16 +40,30 @@ export async function registrarMovimentacao(
 
       const produto = produtoSnap.data();
       const estoqueAtual = Number(produto.quantidade) || 0;
+      const variantes = Array.isArray(produto.variantes) ? produto.variantes : [];
+      const variante = varianteId ? variantes.find((item) => item.id === varianteId) : undefined;
+      if (variantes.length > 0 && !varianteId) throw new Error('Selecione uma característica do produto.');
+      if (varianteId && !variante) throw new Error('A característica selecionada não existe mais.');
+      const estoqueDisponivel = variante ? Number(variante.quantidade) || 0 : estoqueAtual;
 
       // 3) Saída maior que o estoque: erro e nada é alterado
-      if (tipo === 'saida' && quantidade > estoqueAtual) {
-        throw new Error(`Estoque insuficiente: há ${estoqueAtual} unidades.`);
+      if (tipo === 'saida' && quantidade > estoqueDisponivel) {
+        throw new Error(`Estoque insuficiente: há ${estoqueDisponivel} unidades nessa característica.`);
       }
 
       // 4) ESCRITA: atualiza a quantidade (soma na entrada, subtrai na saída)
       const novaQuantidade =
         tipo === 'entrada' ? estoqueAtual + quantidade : estoqueAtual - quantidade;
-      transacao.update(produtoRef, { quantidade: novaQuantidade });
+      if (variante) {
+        const novasVariantes = variantes.map((item) =>
+          item.id === variante.id
+            ? { ...item, quantidade: tipo === 'entrada' ? estoqueDisponivel + quantidade : estoqueDisponivel - quantidade }
+            : item
+        );
+        transacao.update(produtoRef, { quantidade: novaQuantidade, variantes: novasVariantes });
+      } else {
+        transacao.update(produtoRef, { quantidade: novaQuantidade });
+      }
 
       // 5) ESCRITA: cria a movimentação, guardando o nome do produto no histórico
       transacao.set(movimentacaoRef, {
@@ -56,6 +71,7 @@ export async function registrarMovimentacao(
         produtoNome: produto.nome,
         tipo,
         quantidade,
+        ...(variante && { varianteId: variante.id, varianteNome: variante.caracteristica }),
         motivo,
         data,
       });
