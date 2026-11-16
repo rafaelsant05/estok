@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { cores } from '../constants/cores';
+import { PALETAS_TEMA, useThemeStore } from '../store/useThemeStore';
 import { Movimentacao } from '../types';
 
 // Nomes bonitos para mostrar os motivos na tela
@@ -31,22 +31,24 @@ type Props = { movimentacao: Movimentacao };
 // Um item do histórico
 export default function CardMovimentacao({ movimentacao }: Props) {
   const entrada = movimentacao.tipo === 'entrada';
+  const tema = useThemeStore((estado) => estado.tema);
+  const cores = PALETAS_TEMA[tema];
   const cor = entrada ? cores.sucesso : cores.erro;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: cores.card, borderColor: cores.borda }]}>
       <Ionicons
         name={entrada ? 'arrow-down-circle' : 'arrow-up-circle'}
         size={36}
         color={cor}
       />
       <View style={styles.centro}>
-        <Text style={styles.nome}>{movimentacao.produtoNome}</Text>
-        <Text style={styles.detalhe}>
+        <Text style={[styles.nome, { color: cores.texto }]}>{movimentacao.produtoNome}</Text>
+        <Text style={[styles.detalhe, { color: cores.textoSecundario }]}>
           {entrada ? 'Entrada' : 'Saída'} • {rotuloMotivo(movimentacao.motivo)}
         </Text>
-        {!!movimentacao.varianteNome && <Text style={styles.detalhe}>Característica: {movimentacao.varianteNome}</Text>}
-        <Text style={styles.detalhe}>{formatarData(movimentacao.data)}</Text>
+        {!!movimentacao.varianteNome && <Text style={[styles.detalhe, { color: cores.textoSecundario }]}>Característica: {movimentacao.varianteNome}</Text>}
+        <Text style={[styles.detalhe, { color: cores.textoSecundario }]}>{formatarData(movimentacao.data)}</Text>
       </View>
       <Text style={[styles.quantidade, { color: cor }]}>
         {entrada ? '+' : '-'}
@@ -60,16 +62,14 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: cores.borda,
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     gap: 12,
   },
   centro: { flex: 1 },
-  nome: { fontSize: 16, fontWeight: '600', color: cores.texto },
-  detalhe: { fontSize: 13, color: cores.texto, opacity: 0.7, marginTop: 2 },
+  nome: { fontSize: 16, fontWeight: '600' },
+  detalhe: { fontSize: 13, opacity: 0.9, marginTop: 2 },
   quantidade: { fontSize: 20, fontWeight: 'bold' },
 });

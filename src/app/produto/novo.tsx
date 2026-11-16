@@ -1,19 +1,34 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-import { cores } from '../../constants/cores';
 import { buscarPorCodigoBarras } from '../../services/produtosService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useProdutosStore } from '../../store/useProdutosStore';
+import { PALETAS_TEMA, useThemeStore } from '../../store/useThemeStore';
+import { montarDadosProduto, normalizarCodigoBarras, validarProduto } from '../../utils/negocio';
 
 import Botao from '../../components/Botao';
+import CampoCodigoBarras from '../../components/CampoCodigoBarras';
 import Feedback from '../../components/Feedback';
 import Input from '../../components/Input';
 
 export default function NovoProdutoScreen() {
   const router = useRouter();
   const user = useAuthStore((state: any) => state.user);
+  const estoqueMinimoPadrao = useAuthStore((state) =>
+    state.perfilUid === state.user?.uid ? state.perfil.defaultMinStock : null,
+  );
+  const tema = useThemeStore((state) => state.tema);
+  const cores = PALETAS_TEMA[tema];
   const { adicionar } = useProdutosStore();
   const params = useLocalSearchParams();
 
@@ -22,78 +37,74 @@ export default function NovoProdutoScreen() {
   const [categoria, setCategoria] = useState('');
   const [quantidade, setQuantidade] = useState('');
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
-  const [codigoBarras, setCodigoBarras] = useState('');
-  const [variantes, setVariantes] = useState<{ id: string; caracteristica: string; quantidade: string }[]>([]);
+  const estoqueMinimoEfetivo =
+    estoqueMinimo || (estoqueMinimoPadrao !== null ? String(estoqueMinimoPadrao) : '');
+  const [codigoBarras, setCodigoBarras] = useState(() => (typeof params.codigoBarras === 'string' ? normalizarCodigoBarras(params.codigoBarras) : ''));
+  const [variantes, setVariantes] = useState<{ id: string; caracteristica: string; quantidade: string }[]>([] as { id: string; caracteristica: string; quantidade: string }[]);
+
+  const atualizarVariante = (id: string, dados: Partial<{ id: string; caracteristica: string; quantidade: string }>) => {
+    setVariantes((atuais: { id: string; caracteristica: string; quantidade: string }[]) => atuais.map((item) => (item.id === id ? { ...item, ...dados } : item)));
+  };
+
+  const removerVariante = (id: string) => {
+    setVariantes((atuais: { id: string; caracteristica: string; quantidade: string }[]) => atuais.filter((item) => item.id !== id));
+  };
+
+  const adicionarVariante = () => {
+    setVariantes((atuais: { id: string; caracteristica: string; quantidade: string }[]) => [...atuais, { id: `${Date.now()}-${atuais.length}`, caracteristica: '', quantidade: '0' }]);
+  };
 
   // Estados de controle
   const [carregando, setCarregando] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
   const [feedback, setFeedback] = useState<{ tipo: 'sucesso' | 'erro'; msg: string } | null>(null);
 
-  // Preenche o código de barras se vier do scanner do Bruno
-  useEffect(() => {
-    if (params.codigoBarras && typeof params.codigoBarras === 'string') {
-      setCodigoBarras(params.codigoBarras);
-    }
-  }, [params.codigoBarras]);
-
   const handleSalvar = async () => {
     setErroValidacao('');
-    
-    // Validações básicas
-    if (!nome.trim()) return setErroValidacao('O nome é obrigatório.');
-    if (!categoria.trim()) return setErroValidacao('A categoria é obrigatória.');
-    
-    const qtdNum = parseInt(quantidade, 10);
-    const minNum = parseInt(estoqueMinimo, 10);
-    
-    if (isNaN(qtdNum) || qtdNum < 0) return setErroValidacao('Quantidade deve ser um número inteiro maior ou igual a zero.');
-    if (isNaN(minNum) || minNum < 0) return setErroValidacao('Estoque mínimo deve ser um número inteiro maior ou igual a zero.');
+
+    const resultado = validarProduto({
+      nome,
+      categoria,
+      quantidade,
+      estoqueMinimo: estoqueMinimoEfetivo,
+      codigoBarras,
+      variantes,
+    });
+
+    if (!resultado.valido) {
+      const primeiraErro = Object.values(resultado.erros)[0] as string;
+      return setErroValidacao(primeiraErro);
+    }
 
     try {
       setCarregando(true);
 
-      // Validação de código de barras único
-      if (codigoBarras.trim() && user?.uid) {
-        const produtoExistente = await buscarPorCodigoBarras(user.uid, codigoBarras.trim());
+      const codigoNormalizado = normalizarCodigoBarras(codigoBarras);
+      if (codigoNormalizado && user?.uid) {
+        const produtoExistente = await buscarPorCodigoBarras(user.uid, codigoNormalizado);
         if (produtoExistente) {
           setCarregando(false);
           return setErroValidacao('Este código de barras já está cadastrado em outro produto.');
         }
       }
 
-      // Monta os dados omitindo propriedades undefined para não quebrar o Firestore
-      if (variantes.some((variante) => !variante.caracteristica.trim() || !/^\d+$/.test(variante.quantidade))) {
-        setCarregando(false);
-        return setErroValidacao('Preencha cada característica e informe uma quantidade inteira igual ou maior que zero.');
-      }
-      const caracteristicas = variantes.map((variante) => variante.caracteristica.trim().toLocaleLowerCase('pt-BR'));
-      if (new Set(caracteristicas).size !== caracteristicas.length) {
-        setCarregando(false);
-        return setErroValidacao('As características não podem se repetir.');
-      }
-      const dados: any = {
-        nome: nome.trim(),
-        categoria: categoria.trim(),
-        quantidade: variantes.length ? variantes.reduce((total, variante) => total + (Number(variante.quantidade) || 0), 0) : qtdNum,
-        estoqueMinimo: minNum,
-        ...(variantes.length > 0 && { variantes: variantes.map((variante) => ({ ...variante, caracteristica: variante.caracteristica.trim(), quantidade: Number(variante.quantidade) })) }),
-      };
-
-      if (codigoBarras.trim()) {
-        dados.codigoBarras = codigoBarras.trim();
-      }
+      const dados = montarDadosProduto({
+        nome,
+        categoria,
+        quantidade,
+        estoqueMinimo: estoqueMinimoEfetivo,
+        codigoBarras,
+        variantes,
+      });
 
       await adicionar(user.uid, dados);
-      
+
       setFeedback({ tipo: 'sucesso', msg: 'Produto cadastrado com sucesso!' });
-      
-      // Aguarda um instante para o usuário ler a mensagem antes de voltar
+
       setTimeout(() => {
         router.back();
       }, 1500);
-
-    } catch (error) {
+    } catch {
       setFeedback({ tipo: 'erro', msg: 'Erro ao salvar o produto.' });
     } finally {
       setCarregando(false);
@@ -101,62 +112,84 @@ export default function NovoProdutoScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {feedback && <Feedback tipo={feedback.tipo} mensagem={feedback.msg} />}
-      {erroValidacao ? <Feedback tipo="erro" mensagem={erroValidacao} /> : null}
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: cores.fundo }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView
+        style={[styles.container, { backgroundColor: cores.fundo }]}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        {feedback && <Feedback tipo={feedback.tipo} mensagem={feedback.msg} />}
+        {erroValidacao ? <Feedback tipo="erro" mensagem={erroValidacao} /> : null}
 
-      <Input label="Nome do Produto *" value={nome} onChangeText={setNome} placeholder="Ex: Cimento 50kg" />
-      <Input label="Categoria *" value={categoria} onChangeText={setCategoria} placeholder="Ex: Material de Construção" />
-      {variantes.length === 0 ? (
-        <Input label="Quantidade Inicial *" value={quantidade} onChangeText={setQuantidade} keyboardType="numeric" placeholder="Ex: 10" />
-      ) : (
-        <View style={styles.blocoVariantes}>
-          <Text style={styles.tituloVariantes}>Características e estoque inicial</Text>
-          {variantes.map((variante, indice) => (
-            <View key={variante.id} style={styles.linhaVariante}>
-              <Input label={`Característica ${indice + 1}`} value={variante.caracteristica} onChangeText={(texto) => setVariantes((atuais) => atuais.map((item) => item.id === variante.id ? { ...item, caracteristica: texto } : item))} placeholder="Ex: Vermelha, Azul, 500 ml" />
-              <Input label="Quantidade" value={variante.quantidade} onChangeText={(texto) => setVariantes((atuais) => atuais.map((item) => item.id === variante.id ? { ...item, quantidade: texto } : item))} keyboardType="numeric" placeholder="Ex: 10" />
-            </View>
-          ))}
-          {variantes.map((variante) => (
-            <Pressable key={`remover-${variante.id}`} onPress={() => setVariantes((atuais) => atuais.filter((item) => item.id !== variante.id))} style={styles.removerVariante}>
-              <Text style={styles.textoRemoverVariante}>Remover característica</Text>
-            </Pressable>
-          ))}
-          <Text style={styles.totalVariantes}>Estoque total inicial: {variantes.reduce((total, variante) => total + (Number(variante.quantidade) || 0), 0)}</Text>
+        <Input label="Nome do Produto *" value={nome} onChangeText={setNome} placeholder="Ex: Cimento 50kg" />
+        <Input label="Categoria *" value={categoria} onChangeText={setCategoria} placeholder="Ex: Material de Construção" />
+        {variantes.length === 0 ? (
+          <Input label="Quantidade Inicial *" value={quantidade} onChangeText={setQuantidade} keyboardType="numeric" placeholder="Ex: 10" />
+        ) : (
+          <View style={styles.blocoVariantes}>
+            <Text style={[styles.tituloVariantes, { color: cores.texto }]}>Características e estoque inicial</Text>
+            {variantes.map((variante, indice) => (
+              <View key={variante.id} style={[styles.linhaVariante, { borderColor: cores.borda }]}>
+                <Input label={`Característica ${indice + 1}`} value={variante.caracteristica} onChangeText={(texto) => atualizarVariante(variante.id, { caracteristica: texto })} placeholder="Ex: Vermelha, Azul, 500 ml" />
+                <Input label="Quantidade" value={variante.quantidade} onChangeText={(texto) => atualizarVariante(variante.id, { quantidade: texto })} keyboardType="numeric" placeholder="Ex: 10" />
+                {variantes.length > 1 && (
+                  <Pressable
+                    onPress={() => removerVariante(variante.id)}
+                    style={styles.removerVariante}
+                  >
+                    <Text style={[styles.textoRemoverVariante, { color: cores.erro }]}>
+                      Remover característica
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            ))}
+            <Text style={[styles.totalVariantes, { color: cores.texto }]}>Estoque total inicial: {variantes.reduce((total, variante) => total + (Number(variante.quantidade) || 0), 0)}</Text>
+          </View>
+        )}
+        <Pressable
+          onPress={() => { if (variantes.length === 0) setQuantidade('0'); adicionarVariante(); }}
+          style={[styles.botaoVariante, { borderColor: cores.primaria }]}
+        >
+          <Text style={[styles.textoBotaoVariante, { color: cores.primaria }]}>{variantes.length ? 'Adicionar característica' : 'Adicionar características (cor, tamanho...)'}</Text>
+        </Pressable>
+        <Input label="Estoque Mínimo *" value={estoqueMinimoEfetivo} onChangeText={setEstoqueMinimo} keyboardType="numeric" placeholder="Ex: 5" />
+        <CampoCodigoBarras
+          label="Código de Barras (Opcional)"
+          value={codigoBarras}
+          onChangeText={(texto) => setCodigoBarras(normalizarCodigoBarras(texto))}
+          placeholder="Escaneie ou digite"
+          disabled={carregando}
+        />
+
+        <View style={styles.botoes}>
+          <Botao titulo="Salvar" onPress={handleSalvar} carregando={carregando} variante="primario" />
         </View>
-      )}
-      <Pressable onPress={() => { if (variantes.length === 0) setQuantidade('0'); setVariantes([...variantes, { id: `${Date.now()}-${variantes.length}`, caracteristica: '', quantidade: '0' }]); }} style={styles.botaoVariante}>
-        <Text style={styles.textoBotaoVariante}>{variantes.length ? 'Adicionar característica' : 'Adicionar características (cor, tamanho...)'}</Text>
-      </Pressable>
-      <Input label="Estoque Mínimo *" value={estoqueMinimo} onChangeText={setEstoqueMinimo} keyboardType="numeric" placeholder="Ex: 5" />
-      <Input label="Código de Barras (Opcional)" value={codigoBarras} onChangeText={setCodigoBarras} keyboardType="numeric" placeholder="Escaneie ou digite" />
-
-      <View style={styles.botoes}>
-        <Botao titulo="Salvar" onPress={handleSalvar} carregando={carregando} variante="primario" />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: cores.fundo,
-  },
+  container: { flex: 1 },
   content: {
-    padding: 16,
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 40,
   },
   botoes: {
     marginTop: 24,
   },
   blocoVariantes: { marginTop: 8 },
-  tituloVariantes: { fontSize: 15, fontWeight: '700', color: cores.texto, marginBottom: 8 },
-  linhaVariante: { borderWidth: 1, borderColor: cores.borda, borderRadius: 10, padding: 12, marginBottom: 8 },
-  totalVariantes: { color: cores.texto, fontWeight: '600', marginBottom: 8 },
-  botaoVariante: { borderWidth: 1, borderColor: cores.primaria, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 4 },
-  textoBotaoVariante: { color: cores.primaria, fontWeight: '700' },
+  tituloVariantes: { fontSize: 15, fontWeight: '700', marginBottom: 8 },
+  linhaVariante: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 8 },
+  totalVariantes: { fontWeight: '600', marginBottom: 8 },
+  botaoVariante: { borderWidth: 1, borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 4 },
+  textoBotaoVariante: { fontWeight: '700' },
   removerVariante: { paddingVertical: 6, alignSelf: 'flex-end' },
-  textoRemoverVariante: { color: cores.erro, fontSize: 13, fontWeight: '600' },
+  textoRemoverVariante: { fontSize: 13, fontWeight: '600' },
 });

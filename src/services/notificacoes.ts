@@ -1,18 +1,60 @@
 import { Platform } from 'react-native';
 
-// Garante no máximo uma notificação por abertura do app
-let jaNotificou = false;
+type ProdutoBaixo = {
+  id: string;
+  nome: string;
+  quantidade: number;
+  estoqueMinimo: number;
+};
 
-export async function notificarEstoqueBaixo(quantidade: number) {
-  // Notificações não funcionam no navegador
+const MINUTOS_ENTRE_AVISOS = 60_000;
+
+let ultimoAviso: { quantidade: number; timestamp: number } | null = null;
+
+function deveEmitirAviso(quantidade: number): boolean {
+  if (quantidade <= 0) return false;
+  const agora = Date.now();
+
+  if (!ultimoAviso) {
+    return true;
+  }
+
+  const mudouQuantidade = ultimoAviso.quantidade !== quantidade;
+  const passouTempoMinimo = agora - ultimoAviso.timestamp >= MINUTOS_ENTRE_AVISOS;
+
+  return mudouQuantidade || passouTempoMinimo;
+}
+
+function bodyMensagem(quantidade: number, lista?: ProdutoBaixo[]) {
+  if (lista && lista.length > 0) {
+    const nomes = lista.slice(0, 3).map((item) => item.nome);
+    const restante = lista.length - nomes.length;
+
+    if (restante > 0) {
+      return `${nomes.join(', ')} e mais ${restante} produto${restante > 1 ? 's' : ''} abaixo do mínimo.`;
+    }
+
+    return `${nomes.join(', ')} estão com estoque baixo.`;
+  }
+
+  return quantidade === 1
+    ? '1 produto está com estoque baixo.'
+    : `${quantidade} produtos estão com estoque baixo.`;
+}
+
+export async function notificarEstoqueBaixo(quantidadeOuLista: number | ProdutoBaixo[]) {
   if (Platform.OS === 'web') return;
-  if (jaNotificou || quantidade <= 0) return;
+
+  const lista = Array.isArray(quantidadeOuLista) ? quantidadeOuLista : undefined;
+  const quantidade = Array.isArray(quantidadeOuLista)
+    ? quantidadeOuLista.length
+    : quantidadeOuLista;
+
+  if (!deveEmitirAviso(quantidade)) return;
 
   try {
-    // Import dentro da função: na web o módulo nem chega a ser carregado
     const Notifications = await import('expo-notifications');
 
-    // Define como a notificação aparece com o app aberto
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldPlaySound: false,
@@ -22,7 +64,6 @@ export async function notificarEstoqueBaixo(quantidade: number) {
       }),
     });
 
-    // No Android é preciso criar um canal antes de pedir permissão
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Estoque',
@@ -30,7 +71,6 @@ export async function notificarEstoqueBaixo(quantidade: number) {
       });
     }
 
-    // Pede permissão (se ainda não tiver)
     const atual = await Notifications.getPermissionsAsync();
     let status = atual.status;
     if (status !== 'granted') {
@@ -38,21 +78,16 @@ export async function notificarEstoqueBaixo(quantidade: number) {
     }
     if (status !== 'granted') return;
 
-    // Dispara a notificação local na hora (trigger: null)
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Estoque baixo',
-        body:
-          quantidade === 1
-            ? '1 produto está com estoque baixo.'
-            : `${quantidade} produtos estão com estoque baixo.`,
+        body: bodyMensagem(quantidade, lista),
       },
       trigger: null,
     });
 
-    jaNotificou = true;
-  } catch (e) {
-    // Se falhar (ex.: limitação do Expo Go), o app segue normalmente
-    console.log('Notificação indisponível:', e);
+    ultimoAviso = { quantidade, timestamp: Date.now() };
+  } catch (erro) {
+    console.log('Notificação indisponível:', erro);
   }
 }

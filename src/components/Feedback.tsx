@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { cores } from '../constants/cores';
+import { PALETAS_TEMA, useThemeStore } from '../store/useThemeStore';
 
 type Props = {
   tipo: 'sucesso' | 'erro' | 'aviso';
@@ -9,18 +9,25 @@ type Props = {
   duracao?: number; // em ms; some sozinho se onFechar for informado
 };
 
-const fundo = {
-  sucesso: cores.sucesso,
-  erro: cores.erro,
-  aviso: cores.aviso,
-};
-
 export default function Feedback({ tipo, mensagem, onFechar, duracao = 4000 }: Props) {
+  const tema = useThemeStore((estado) => estado.tema);
+  const cores = PALETAS_TEMA[tema];
+  const fundo = {
+    sucesso: cores.sucesso,
+    erro: cores.erro,
+    aviso: cores.aviso,
+  };
+  const onFecharRef = useRef(onFechar);
+
   useEffect(() => {
-    if (!mensagem || !onFechar) return;
-    const timer = setTimeout(onFechar, duracao);
+    onFecharRef.current = onFechar;
+  }, [onFechar]);
+
+  useEffect(() => {
+    if (!mensagem || !onFecharRef.current) return;
+    const timer = setTimeout(() => onFecharRef.current?.(), duracao);
     return () => clearTimeout(timer);
-  }, [mensagem]);
+  }, [mensagem, duracao]);
 
   if (!mensagem) return null;
 
@@ -29,7 +36,7 @@ export default function Feedback({ tipo, mensagem, onFechar, duracao = 4000 }: P
       onPress={onFechar}
       style={[estilos.caixa, { backgroundColor: fundo[tipo] }]}
     >
-      <Text style={estilos.texto}>{mensagem}</Text>
+      <Text style={[estilos.texto, { color: cores.textoSobreStatus }]}>{mensagem}</Text>
     </Pressable>
   );
 }
@@ -40,5 +47,5 @@ const estilos = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
-  texto: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  texto: { fontSize: 14, fontWeight: '600' },
 });
