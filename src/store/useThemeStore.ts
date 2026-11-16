@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { THEME_COLORS, TemaResolvido } from '../theme/colors';
+import { THEME_COLORS } from '../theme/colors';
 
-export type Tema = TemaResolvido | 'system';
+export type Tema = 'light' | 'dark';
 
 export type PaletaTema = {
   primaria: string;
@@ -24,7 +24,7 @@ export type PaletaTema = {
   textoSobreStatus: string;
 };
 
-type CoresTemas = Record<TemaResolvido, PaletaTema>;
+type CoresTemas = Record<Tema, PaletaTema>;
 
 export const PALETAS_TEMA: CoresTemas = {
   light: {
@@ -66,11 +66,8 @@ export const PALETAS_TEMA: CoresTemas = {
 };
 
 type ThemeState = {
-  tema: TemaResolvido;
-  preferencia: Tema;
-  temaSistema: TemaResolvido;
+  tema: Tema;
   setTema: (tema: Tema) => void;
-  setTemaSistema: (tema: TemaResolvido) => void;
   alternarTema: () => void;
 };
 
@@ -78,41 +75,30 @@ export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
       tema: 'light',
-      preferencia: 'system',
-      temaSistema: 'light',
-      setTema: (preferencia) =>
-        set((estado) => ({
-          preferencia,
-          tema: preferencia === 'system' ? estado.temaSistema : preferencia,
-        })),
-      setTemaSistema: (temaSistema) =>
-        set((estado) => ({
-          temaSistema,
-          ...(estado.preferencia === 'system' ? { tema: temaSistema } : {}),
-        })),
+      setTema: (tema) => set({ tema }),
       alternarTema: () =>
         set((estado) => {
           const tema = estado.tema === 'light' ? 'dark' : 'light';
-          return { tema, preferencia: tema };
+          return { tema };
         }),
     }),
     {
       name: 'estok-tema',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
-      partialize: (estado) => ({
-        preferencia: estado.preferencia,
-        tema: estado.tema,
-      }),
+      version: 3,
+      partialize: (estado) => ({ tema: estado.tema }),
       migrate: (estadoPersistido, versao) => {
         const estado =
           estadoPersistido && typeof estadoPersistido === 'object'
-            ? (estadoPersistido as { tema?: Tema; preferencia?: Tema })
+            ? (estadoPersistido as { tema?: string; preferencia?: string })
             : {};
-        if (versao < 2 && !estado.preferencia && estado.tema) {
-          return { ...estado, preferencia: estado.tema };
+        if (estado.preferencia === 'light' || estado.preferencia === 'dark') {
+          return { tema: estado.preferencia };
         }
-        return estado as Partial<ThemeState>;
+        if (versao < 2 && (estado.tema === 'light' || estado.tema === 'dark')) {
+          return { tema: estado.tema };
+        }
+        return { tema: 'light' };
       },
     },
   ),

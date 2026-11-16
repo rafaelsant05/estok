@@ -1,24 +1,29 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { auth } from '../services/firebase';
 import { useAuthStore } from '../store/useAuthStore';
 import { carregarPerfilUsuario } from '../services/perfilService';
 import { PALETAS_TEMA, useThemeStore } from '../store/useThemeStore';
+import AvisoPrivacidade from '../components/AvisoPrivacidade';
 
 export default function RootLayout() {
-  const { user, carregando, setUser, setPerfil, setErroPerfil } = useAuthStore();
+  const {
+    user,
+    perfil,
+    perfilUid,
+    carregando,
+    carregandoPerfil,
+    setUser,
+    setPerfil,
+    setErroPerfil,
+  } = useAuthStore();
   const tema = useThemeStore((estado) => estado.tema);
-  const setTemaSistema = useThemeStore((estado) => estado.setTemaSistema);
   const cores = PALETAS_TEMA[tema];
-  const esquemaSistema = useColorScheme() ?? 'light';
   const segments = useSegments();
   const router = useRouter();
-
-  useEffect(() => {
-    setTemaSistema(esquemaSistema);
-  }, [esquemaSistema, setTemaSistema]);
 
   // Escuta o login e o logout do Firebase
   useEffect(() => {
@@ -31,30 +36,58 @@ export default function RootLayout() {
         usuario.uid,
         usuario.displayName,
         usuario.photoURL,
-      ).then(({ perfil, erro }) => {
-        setPerfil(usuario.uid, perfil);
+      ).then(({ perfil: perfilCarregado, erro }) => {
+        setPerfil(usuario.uid, perfilCarregado);
+        if (erro) {
+          console.warn('Não foi possível sincronizar o perfil da conta.', erro);
+        }
         if (erro && useAuthStore.getState().user?.uid === usuario.uid) {
           setErroPerfil('Não foi possível sincronizar o perfil. Os dados locais continuam disponíveis.');
         }
+      }).catch((erro: unknown) => {
+        console.warn('Não foi possível carregar a conta.', erro);
+        setPerfil(usuario.uid, {
+          displayName: usuario.displayName ?? '',
+          photoUrl: usuario.photoURL,
+          storeName: '',
+          defaultMinStock: null,
+        });
       });
     });
     return cancelar;
   }, [setErroPerfil, setPerfil, setUser]);
 
-  // Redireciona conforme o usuário esteja logado ou não
+  // Direciona novos usuários pelo onboarding, sem bloquear contas antigas.
   useEffect(() => {
-    if (carregando) return;
+    if (carregando || (user && carregandoPerfil)) return;
     const naAreaDeLogin = segments[0] === '(auth)';
+    const naPaginaLgpd = segments[0] === 'lgpd';
+    const naAreaOnboarding =
+      segments[0] === 'boas-vindas' || segments[0] === 'configurar-perfil';
+    const onboardingConcluido =
+      perfilUid === user?.uid ? perfil.onboardingConcluido : undefined;
 
     if (!user && !naAreaDeLogin) {
-      router.replace('/(auth)/login');
-    } else if (user && naAreaDeLogin) {
+      if (!naPaginaLgpd) router.replace('/(auth)/login');
+    } else if (user && naPaginaLgpd) {
+      return;
+    } else if (user && onboardingConcluido === false && !naAreaOnboarding) {
+      router.replace('/boas-vindas');
+    } else if (user && onboardingConcluido !== false && (naAreaOnboarding || naAreaDeLogin)) {
       router.replace('/(tabs)');
     }
-  }, [user, carregando, router, segments]);
+  }, [
+    user,
+    perfil,
+    perfilUid,
+    carregando,
+    carregandoPerfil,
+    router,
+    segments,
+  ]);
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar
         barStyle={tema === 'dark' ? 'light-content' : 'dark-content'}
       />
@@ -73,17 +106,21 @@ export default function RootLayout() {
           name="(tabs)"
           options={{ headerShown: false, headerBackTitle: 'Voltar' }}
         />
+        <Stack.Screen name="lgpd" options={{ headerShown: false }} />
+        <Stack.Screen name="boas-vindas" options={{ headerShown: false }} />
+        <Stack.Screen name="configurar-perfil" options={{ headerShown: false }} />
         <Stack.Screen name="produto/novo" options={{ headerShown: true, title: 'Novo produto' }} />
         <Stack.Screen name="produto/[id]" options={{ headerShown: true, title: 'Produto' }} />
         <Stack.Screen name="scanner" options={{ headerShown: true, title: 'Scanner' }} />
       </Stack>
 
-      {carregando && (
+      {(carregando || (!!user && carregandoPerfil)) && (
         <View style={[estilos.carregando, { backgroundColor: cores.fundo }]}>
           <ActivityIndicator size="large" color={cores.primaria} />
         </View>
       )}
-    </>
+      <AvisoPrivacidade />
+    </SafeAreaProvider>
   );
 }
 

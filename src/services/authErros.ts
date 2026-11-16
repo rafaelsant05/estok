@@ -11,7 +11,7 @@ export function mensagemErroAuth(erro: unknown): string {
     case 'auth/email-already-in-use':
       return 'Este e-mail já está em uso.';
     case 'auth/weak-password':
-      return 'A senha deve ter no mínimo 6 caracteres.';
+      return 'A senha deve ter no mínimo 8 caracteres.';
     case 'auth/too-many-requests':
       return 'Muitas tentativas. Aguarde um pouco e tente de novo.';
     case 'auth/network-request-failed':

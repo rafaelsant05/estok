@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedInAs(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow get: if signedInAs(userId);
+
+      allow create: if signedInAs(userId)
+        && request.resource.data.keys().hasAll([
+          'nome',
+          'email',
+          'criadoEm',
+          'onboardingConcluido'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'nome',
+          'email',
+          'criadoEm',
+          'onboardingConcluido'
+        ])
+        && request.resource.data.nome is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.criadoEm == request.time
+        && request.resource.data.onboardingConcluido == false;
+
+      allow update: if signedInAs(userId);
+      allow list, delete: if false;
+
+      match /produtos/{productId} {
+        allow read, write: if signedInAs(userId);
+      }
+
+      match /movimentacoes/{movementId} {
+        allow read, write: if signedInAs(userId);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
