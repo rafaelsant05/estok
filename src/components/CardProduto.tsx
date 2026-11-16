@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { cores } from '../constants/cores';
+import { PALETAS_TEMA, useThemeStore } from '../store/useThemeStore';
 import { Produto } from '../types';
 
 interface Props {
@@ -10,36 +10,42 @@ interface Props {
 }
 
 export default function CardProduto({ produto, onPress }: Props) {
-  // Regra visual de alerta: quantidade menor ou igual ao estoque mínimo
   const estoqueBaixo = produto.quantidade <= produto.estoqueMinimo;
+  const tema = useThemeStore((estado) => estado.tema);
+  const cores = PALETAS_TEMA[tema];
 
   return (
-    <TouchableOpacity 
-      style={[styles.card, estoqueBaixo && styles.cardAlerta]} 
+    <TouchableOpacity
+      style={[
+        styles.card,
+        { backgroundColor: cores.card, borderColor: cores.borda, shadowColor: cores.texto },
+        estoqueBaixo && {
+          borderColor: cores.aviso,
+          backgroundColor: cores.superficie,
+        },
+      ]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      {/* Miniatura da foto ou Placeholder */}
       {produto.fotoUri ? (
         <Image source={{ uri: produto.fotoUri }} style={styles.imagem} />
       ) : (
-        <View style={styles.imagemPlaceholder}>
-          <MaterialIcons name="inventory" size={24} color={cores.texto} />
+        <View style={[styles.imagemPlaceholder, { backgroundColor: cores.superficie }]}>
+          <MaterialIcons name="inventory" size={24} color={cores.textoSecundario} />
         </View>
       )}
 
-      {/* Informações do Produto */}
       <View style={styles.info}>
-        <Text style={styles.nome} numberOfLines={1}>{produto.nome}</Text>
-        <Text style={styles.categoria}>{produto.categoria}</Text>
+        <Text style={[styles.nome, { color: cores.texto }]} numberOfLines={1}>{produto.nome}</Text>
+        <Text style={[styles.categoria, { color: cores.textoSecundario }]}>{produto.categoria}</Text>
+        <Text style={[styles.auxiliar, { color: estoqueBaixo ? cores.erro : cores.sucesso }]}>
+          {estoqueBaixo ? 'Estoque em alerta' : 'Em dia'}
+        </Text>
       </View>
 
-      {/* Quantidade */}
       <View style={styles.quantidadeContainer}>
-        <Text style={[styles.quantidade, estoqueBaixo && styles.textoAlerta]}>
-          {produto.quantidade}
-        </Text>
-        <Text style={[styles.unidade, estoqueBaixo && styles.textoAlerta]}>un.</Text>
+        <Text style={[styles.quantidade, { color: estoqueBaixo ? cores.erro : cores.texto }]}>{produto.quantidade}</Text>
+        <Text style={[styles.unidade, { color: cores.textoSecundario }]}>un.</Text>
       </View>
     </TouchableOpacity>
   );
@@ -49,34 +55,26 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: cores.fundo,
     padding: 12,
     marginVertical: 6,
     marginHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: cores.borda,
-    elevation: 2, // Sombra no Android
-    shadowColor: '#000', // Sombra no iOS/Web
+    elevation: 2,
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  cardAlerta: {
-    borderColor: cores.aviso,
-    backgroundColor: '#FFF8E1', // Fundo levemente amarelado/avermelhado
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
   imagem: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: cores.borda,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
   },
   imagemPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: cores.borda,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -86,30 +84,31 @@ const styles = StyleSheet.create({
   },
   nome: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: cores.texto,
+    fontWeight: '700',
   },
   categoria: {
     fontSize: 12,
-    color: cores.texto,
     opacity: 0.7,
     marginTop: 2,
+  },
+  auxiliar: {
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  auxiliarAlerta: {
   },
   quantidadeContainer: {
     alignItems: 'flex-end',
     justifyContent: 'center',
+    minWidth: 55,
   },
   quantidade: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: cores.texto,
+    fontSize: 20,
+    fontWeight: '800',
   },
   unidade: {
     fontSize: 12,
-    color: cores.texto,
     opacity: 0.7,
   },
-  textoAlerta: {
-    color: cores.erro,
-  }
 });

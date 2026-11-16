@@ -6,11 +6,13 @@ import CardMovimentacao from '../../components/CardMovimentacao';
 import FormMovimentacao from '../../components/FormMovimentacao';
 import Feedback from '../../components/Feedback';
 import Loading from '../../components/Loading';
-import { cores } from '../../constants/cores';
+import { PALETAS_TEMA, useThemeStore } from '../../store/useThemeStore';
 import { listarMovimentacoes } from '../../services/movimentacoesService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useProdutosStore } from '../../store/useProdutosStore';
 import { Movimentacao } from '../../types';
+import { useMovimentacoesFiltradas } from '../../hooks/useMovimentacoesFiltradas';
+import { sugerirProdutosPorNome } from '../../utils/negocio';
 
 type Filtro = 'todas' | 'entrada' | 'saida';
 
@@ -21,6 +23,8 @@ const FILTROS: { valor: Filtro; rotulo: string }[] = [
 ];
 
 export default function Movimentacoes() {
+  const tema = useThemeStore((s) => s.tema);
+  const paleta = PALETAS_TEMA[tema];
   const user = useAuthStore((s) => s.user);
   const carregarProdutos = useProdutosStore((s) => s.carregar);
   const produtos = useProdutosStore((s) => s.produtos);
@@ -42,11 +46,10 @@ export default function Movimentacoes() {
   );
   const produtoPorId = useMemo(() => new Map(produtos.map((produto) => [produto.id, produto])), [produtos]);
   const produtoSelecionado = produtos.find((produto) => produto.id === produtoSelecionadoId);
-  const sugestoes = buscaProduto.trim()
-    ? produtos
-        .filter((produto) => produto.nome.toLocaleLowerCase('pt-BR').includes(buscaProduto.trim().toLocaleLowerCase('pt-BR')))
-        .slice(0, 6)
-    : [];
+  const sugestoes = useMemo(
+    () => sugerirProdutosPorNome(produtos, buscaProduto, categoriaSelecionada),
+    [produtos, buscaProduto, categoriaSelecionada],
+  );
 
   // Busca o histórico no Firestore
   const carregarHistorico = useCallback(async () => {
@@ -78,14 +81,13 @@ export default function Movimentacoes() {
     setAtualizando(false);
   }
 
-  // Aplica o filtro por tipo
-  const visiveis = movimentacoes.filter((movimentacao) => {
-    const produto = produtoPorId.get(movimentacao.produtoId);
-    const correspondeTipo = filtro === 'todas' || movimentacao.tipo === filtro;
-    const correspondeProduto = !produtoSelecionadoId || movimentacao.produtoId === produtoSelecionadoId;
-    const correspondeCategoria = !categoriaSelecionada || produto?.categoria === categoriaSelecionada;
-    return correspondeTipo && correspondeProduto && correspondeCategoria;
-  });
+  const visiveis = useMovimentacoesFiltradas(
+    movimentacoes,
+    filtro,
+    produtoSelecionadoId,
+    categoriaSelecionada,
+    produtoPorId,
+  );
 
   const mensagemVazia =
     movimentacoes.length === 0
@@ -93,11 +95,11 @@ export default function Movimentacoes() {
       : 'Nenhuma movimentação desse tipo';
 
   return (
-    <View style={estilos.tela}>
-      <View style={estilos.painelFiltros}>
-        <Text style={estilos.rotuloFiltro}>Pesquisar produto</Text>
-        <View style={estilos.buscaContainer}>
-          <Ionicons name="search-outline" size={20} color={cores.texto} />
+    <View style={[estilos.tela, { backgroundColor: paleta.fundo }]}>
+      <View style={[estilos.painelFiltros, { backgroundColor: paleta.card, borderBottomColor: paleta.borda }]}>
+        <Text style={[estilos.rotuloFiltro, { color: paleta.texto }]}>Pesquisar produto</Text>
+        <View style={[estilos.buscaContainer, { backgroundColor: paleta.superficie, borderColor: paleta.borda }]}>
+          <Ionicons name="search-outline" size={20} color={paleta.primaria} />
           <TextInput
             value={produtoSelecionado ? produtoSelecionado.nome : buscaProduto}
             onChangeText={(texto) => {
@@ -105,40 +107,40 @@ export default function Movimentacoes() {
               setProdutoSelecionadoId('');
             }}
             placeholder="Digite o nome do produto"
-            placeholderTextColor={`${cores.texto}80`}
-            style={estilos.buscaInput}
+            placeholderTextColor={paleta.desabilitado}
+            style={[estilos.buscaInput, { color: paleta.texto }]}
             accessibilityLabel="Pesquisar produto nas movimentações"
           />
           {!!(buscaProduto || produtoSelecionadoId) && (
             <Pressable onPress={() => { setBuscaProduto(''); setProdutoSelecionadoId(''); }} accessibilityLabel="Limpar busca de produto">
-              <Ionicons name="close-circle" size={20} color={cores.texto} />
+              <Ionicons name="close-circle" size={20} color={paleta.textoSecundario} />
             </Pressable>
           )}
         </View>
         {sugestoes.length > 0 && !produtoSelecionadoId && (
-          <View style={estilos.sugestoes}>
+          <View style={[estilos.sugestoes, { backgroundColor: paleta.card, borderColor: paleta.borda }]}>
             {sugestoes.map((produto) => (
-              <Pressable key={produto.id} onPress={() => { setProdutoSelecionadoId(produto.id); setBuscaProduto(''); }} style={estilos.sugestao}>
-                <Text style={estilos.sugestaoNome}>{produto.nome}</Text>
-                <Text style={estilos.sugestaoCategoria}>{produto.categoria}</Text>
+              <Pressable key={produto.id} onPress={() => { setProdutoSelecionadoId(produto.id); setBuscaProduto(''); }} style={[estilos.sugestao, { borderBottomColor: paleta.borda }]}>
+                <Text style={[estilos.sugestaoNome, { color: paleta.texto }]}>{produto.nome}</Text>
+                <Text style={[estilos.sugestaoCategoria, { color: paleta.textoSecundario }]}>{produto.categoria}</Text>
               </Pressable>
             ))}
           </View>
         )}
 
-        <Text style={estilos.rotuloFiltro}>Categoria</Text>
-        <Pressable onPress={() => setDropdownCategoriaAberto((aberto) => !aberto)} style={estilos.seletorCategoria} accessibilityRole="button">
-          <Text style={estilos.seletorCategoriaTexto}>{categoriaSelecionada || 'Todas as categorias'}</Text>
-          <Ionicons name={dropdownCategoriaAberto ? 'chevron-up' : 'chevron-down'} size={18} color={cores.texto} />
+        <Text style={[estilos.rotuloFiltro, { color: paleta.texto }]}>Categoria</Text>
+        <Pressable onPress={() => setDropdownCategoriaAberto((aberto) => !aberto)} style={[estilos.seletorCategoria, { backgroundColor: paleta.superficie, borderColor: paleta.borda }]} accessibilityRole="button">
+          <Text style={[estilos.seletorCategoriaTexto, { color: paleta.texto }]}>{categoriaSelecionada || 'Todas as categorias'}</Text>
+          <Ionicons name={dropdownCategoriaAberto ? 'chevron-up' : 'chevron-down'} size={18} color={paleta.texto} />
         </Pressable>
         {dropdownCategoriaAberto && (
-          <View style={estilos.opcoesCategoria}>
+          <View style={[estilos.opcoesCategoria, { backgroundColor: paleta.card, borderColor: paleta.borda }]}>
             {['', ...categorias].map((categoria) => {
               const ativo = categoriaSelecionada === categoria;
               return (
-                <Pressable key={categoria || 'todas'} onPress={() => { setCategoriaSelecionada(categoria); setDropdownCategoriaAberto(false); }} style={estilos.opcaoCategoria}>
-                  <Text style={[estilos.opcaoCategoriaTexto, ativo && estilos.opcaoCategoriaAtiva]}>{categoria || 'Todas as categorias'}</Text>
-                  {ativo && <Ionicons name="checkmark" size={18} color={cores.primaria} />}
+                <Pressable key={categoria || 'todas'} onPress={() => { setCategoriaSelecionada(categoria); setDropdownCategoriaAberto(false); }} style={[estilos.opcaoCategoria, { borderBottomColor: paleta.borda }]}>
+                  <Text style={[estilos.opcaoCategoriaTexto, { color: ativo ? paleta.primaria : paleta.texto, fontWeight: ativo ? '700' : '400' }]}>{categoria || 'Todas as categorias'}</Text>
+                  {ativo && <Ionicons name="checkmark" size={18} color={paleta.primaria} />}
                 </Pressable>
               );
             })}
@@ -154,9 +156,12 @@ export default function Movimentacoes() {
             <Pressable
               key={f.valor}
               onPress={() => setFiltro(f.valor)}
-              style={[estilos.chip, ativo && estilos.chipAtivo]}
+              style={[
+                estilos.chip,
+                { backgroundColor: ativo ? paleta.primaria : paleta.card, borderColor: ativo ? paleta.primaria : paleta.borda },
+              ]}
             >
-              <Text style={[estilos.chipTexto, ativo && estilos.chipTextoAtivo]}>
+              <Text style={[estilos.chipTexto, { color: ativo ? paleta.textoSobreAcao : paleta.texto }]}>
                 {f.rotulo}
               </Text>
             </Pressable>
@@ -176,22 +181,26 @@ export default function Movimentacoes() {
         <FlatList
           data={visiveis}
           keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => <CardMovimentacao movimentacao={item} />}
           contentContainerStyle={estilos.lista}
           refreshControl={<RefreshControl refreshing={atualizando} onRefresh={atualizar} />}
           ListEmptyComponent={
             <View style={estilos.vazio}>
-              <Ionicons name="swap-vertical-outline" size={48} color={cores.borda} />
-              <Text style={estilos.vazioTexto}>{mensagemVazia}</Text>
+              <Ionicons name="swap-vertical-outline" size={48} color={paleta.borda} />
+              <Text style={[estilos.vazioTexto, { color: paleta.textoSecundario }]}>{mensagemVazia}</Text>
             </View>
           }
         />
       )}
 
       {/* Botão flutuante: abre o formulário */}
-      <Pressable style={estilos.botaoNovo} onPress={() => setFormAberto(true)}>
-        <Ionicons name="add" size={22} color="#FFFFFF" />
-        <Text style={estilos.botaoNovoTexto}>Nova movimentação</Text>
+      <Pressable
+        style={[estilos.botaoNovo, { backgroundColor: paleta.primaria, shadowColor: paleta.texto }]}
+        onPress={() => setFormAberto(true)}
+      >
+        <Ionicons name="add" size={22} color={paleta.textoSobreAcao} />
+        <Text style={[estilos.botaoNovoTexto, { color: paleta.textoSobreAcao }]}>Nova movimentação</Text>
       </Pressable>
 
       <FormMovimentacao
@@ -207,37 +216,32 @@ export default function Movimentacoes() {
 }
 
 const estilos = StyleSheet.create({
-  tela: { flex: 1, backgroundColor: cores.fundo },
-  painelFiltros: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: cores.borda },
-  rotuloFiltro: { fontSize: 13, fontWeight: '600', color: cores.texto, marginBottom: 6 },
-  buscaContainer: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: cores.borda, borderRadius: 10, paddingHorizontal: 12, backgroundColor: '#FFFFFF' },
-  buscaInput: { flex: 1, color: cores.texto, paddingVertical: 8 },
-  sugestoes: { marginTop: 4, borderWidth: 1, borderColor: cores.borda, borderRadius: 10, overflow: 'hidden', backgroundColor: '#FFFFFF' },
-  sugestao: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: cores.borda },
-  sugestaoNome: { color: cores.texto, fontSize: 14, fontWeight: '600' },
-  sugestaoCategoria: { color: cores.texto, opacity: 0.65, fontSize: 12, marginTop: 2 },
-  seletorCategoria: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: cores.borda, borderRadius: 10, paddingHorizontal: 12, backgroundColor: '#FFFFFF', marginBottom: 4 },
-  seletorCategoriaTexto: { color: cores.texto, fontSize: 14 },
-  opcoesCategoria: { borderWidth: 1, borderColor: cores.borda, borderRadius: 10, overflow: 'hidden', marginBottom: 8, backgroundColor: '#FFFFFF' },
-  opcaoCategoria: { minHeight: 42, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: cores.borda },
-  opcaoCategoriaTexto: { color: cores.texto, fontSize: 14 },
-  opcaoCategoriaAtiva: { fontWeight: '700', color: cores.primaria },
+  tela: { flex: 1 },
+  painelFiltros: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1 },
+  rotuloFiltro: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  buscaContainer: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12 },
+  buscaInput: { flex: 1, paddingVertical: 8, fontSize: 15 },
+  sugestoes: { marginTop: 6, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  sugestao: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1 },
+  sugestaoNome: { fontSize: 14, fontWeight: '600' },
+  sugestaoCategoria: { opacity: 0.8, fontSize: 12, marginTop: 2 },
+  seletorCategoria: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, marginBottom: 4 },
+  seletorCategoriaTexto: { fontSize: 14, fontWeight: '600' },
+  opcoesCategoria: { borderWidth: 1, borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
+  opcaoCategoria: { minHeight: 42, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 },
+  opcaoCategoriaTexto: { fontSize: 14 },
   filtros: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 20,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: cores.borda,
-    backgroundColor: '#FFFFFF',
   },
-  chipAtivo: { backgroundColor: cores.primaria, borderColor: cores.primaria },
-  chipTexto: { fontSize: 14, fontWeight: '600', color: cores.texto },
-  chipTextoAtivo: { color: '#FFFFFF' },
+  chipTexto: { fontSize: 14, fontWeight: '600' },
   feedback: { paddingHorizontal: 16 },
   lista: { padding: 16, paddingTop: 8, paddingBottom: 96, flexGrow: 1 },
   vazio: { alignItems: 'center', justifyContent: 'center', paddingTop: 64, gap: 12 },
-  vazioTexto: { fontSize: 15, color: cores.texto, opacity: 0.7, textAlign: 'center' },
+  vazioTexto: { fontSize: 15, opacity: 0.7, textAlign: 'center' },
   botaoNovo: {
     position: 'absolute',
     right: 16,
@@ -245,11 +249,13 @@ const estilos = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: cores.primaria,
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 28,
+    borderRadius: 999,
     elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
   },
-  botaoNovoTexto: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  botaoNovoTexto: { fontSize: 15, fontWeight: '700' },
 });

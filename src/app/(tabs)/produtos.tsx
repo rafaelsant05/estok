@@ -1,45 +1,49 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  RefreshControl 
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 
-// CORREÇÃO 1: Usando chaves para importação nomeada
 import { useAuthStore } from '../../store/useAuthStore';
 import { useProdutosStore } from '../../store/useProdutosStore';
-// CORREÇÃO 2: Importando o tipo Produto para tipar as variáveis
-import { Produto } from '../../types';
+import { useProdutosFiltrados } from '../../hooks/useProdutosFiltrados';
 
 import CardProduto from '../../components/CardProduto';
-import { cores } from '../../constants/cores';
+import { PALETAS_TEMA, useThemeStore } from '../../store/useThemeStore';
 import Loading from '../../components/Loading';
 import Feedback from '../../components/Feedback';
 
 export default function ProdutosScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ estoqueBaixo?: string }>();
   
   // CORREÇÃO 3: Tipagem explícita para o state (any) para evitar o erro TS7006
   const user = useAuthStore((state: any) => state.user);
+  const tema = useThemeStore((state) => state.tema);
+  const paleta = PALETAS_TEMA[tema];
   const { produtos, carregando, erro, carregar } = useProdutosStore();
 
   const [busca, setBusca] = useState('');
   const [categoriaSelecionada, setCategoriaSelecionada] = useState('');
+  const somenteEstoqueBaixo = params.estoqueBaixo === '1';
   const [refreshing, setRefreshing] = useState(false);
+  const userUid = user?.uid;
 
   useFocusEffect(
     useCallback(() => {
-      if (user?.uid) {
-        carregar(user.uid);
+      if (userUid) {
+        carregar(userUid);
       }
-    }, [user?.uid])
+    }, [carregar, userUid])
   );
 
   const onRefresh = async () => {
@@ -50,66 +54,85 @@ export default function ProdutosScreen() {
     }
   };
 
-  // CORREÇÃO 4: Avisando ao TypeScript que 'p' é um Produto e o Set guarda strings
-  const categorias = useMemo(() => {
-    const cats = new Set<string>(produtos.map((p: Produto) => p.categoria));
-    return Array.from(cats).sort();
-  }, [produtos]);
-
-  const produtosFiltrados = useMemo(() => {
-    return produtos.filter((p: Produto) => {
-      const matchBusca = p.nome.toLowerCase().includes(busca.toLowerCase());
-      const matchCategoria = categoriaSelecionada ? p.categoria === categoriaSelecionada : true;
-      return matchBusca && matchCategoria;
-    });
-  }, [produtos, busca, categoriaSelecionada]);
+  const produtosParaFiltrar = somenteEstoqueBaixo
+    ? produtos.filter((produto) => produto.quantidade <= produto.estoqueMinimo)
+    : produtos;
+  const { categorias, produtosFiltrados } = useProdutosFiltrados(
+    produtosParaFiltrar,
+    busca,
+    categoriaSelecionada,
+  );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: paleta.fundo }]}>
       {erro ? <Feedback tipo="erro" mensagem={erro} /> : null}
 
       {/* Header com Busca e Filtros */}
-      <View style={styles.header}>
-        <View style={styles.buscaContainer}>
-          <MaterialIcons name="search" size={24} color={cores.texto} style={styles.iconeBusca} />
+      <View style={[styles.header, { backgroundColor: paleta.card, borderBottomColor: paleta.borda }]}>
+        <View style={[styles.buscaContainer, { backgroundColor: paleta.superficie, borderColor: paleta.borda }]}>
+          <MaterialIcons name="search" size={22} color={paleta.primaria} style={styles.iconeBusca} />
           <TextInput
-            style={styles.buscaInput}
+            style={[styles.buscaInput, { color: paleta.texto }]}
             placeholder="Buscar por nome..."
             value={busca}
             onChangeText={setBusca}
-            placeholderTextColor={cores.texto + '80'}
+            placeholderTextColor={paleta.desabilitado}
           />
           {busca.length > 0 && (
             <TouchableOpacity onPress={() => setBusca('')}>
-              <MaterialIcons name="close" size={20} color={cores.texto} />
+              <MaterialIcons name="close" size={20} color={paleta.textoSecundario} />
             </TouchableOpacity>
           )}
         </View>
 
         {categorias.length > 0 && (
           <View style={styles.filtrosContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <TouchableOpacity
-                style={[styles.chip, !categoriaSelecionada && styles.chipAtivo]}
+                style={[
+                  styles.chip,
+                  { backgroundColor: !categoriaSelecionada ? paleta.primaria : paleta.superficie, borderColor: !categoriaSelecionada ? paleta.primaria : paleta.borda },
+                ]}
                 onPress={() => setCategoriaSelecionada('')}
               >
-                <Text style={[styles.chipTexto, !categoriaSelecionada && styles.chipTextoAtivo]}>
+                <Text style={[styles.chipTexto, { color: !categoriaSelecionada ? paleta.textoSobreAcao : paleta.texto }]}>
                   Todos
                 </Text>
               </TouchableOpacity>
               {categorias.map(cat => (
                 <TouchableOpacity
                   key={cat}
-                  style={[styles.chip, categoriaSelecionada === cat && styles.chipAtivo]}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: categoriaSelecionada === cat ? paleta.primaria : paleta.superficie, borderColor: categoriaSelecionada === cat ? paleta.primaria : paleta.borda },
+                  ]}
                   onPress={() => setCategoriaSelecionada(cat)}
                 >
-                  <Text style={[styles.chipTexto, categoriaSelecionada === cat && styles.chipTextoAtivo]}>
+                  <Text style={[styles.chipTexto, { color: categoriaSelecionada === cat ? paleta.textoSobreAcao : paleta.texto }]}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
+        )}
+        {somenteEstoqueBaixo && (
+          <Pressable
+            style={[styles.filtroEstoqueBaixo, { backgroundColor: paleta.superficie, borderColor: paleta.aviso }]}
+            onPress={() => router.replace('/(tabs)/produtos')}
+            accessibilityRole="button"
+            accessibilityLabel="Remover filtro de estoque baixo"
+          >
+            <MaterialIcons name="warning-amber" size={16} color={paleta.aviso} />
+            <Text style={[styles.filtroEstoqueBaixoTexto, { color: paleta.texto }]}>
+              Estoque baixo
+            </Text>
+            <MaterialIcons name="close" size={16} color={paleta.textoSecundario} />
+          </Pressable>
         )}
       </View>
 
@@ -120,9 +143,10 @@ export default function ProdutosScreen() {
         <FlatList
           data={produtosFiltrados}
           keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listaContainer}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[cores.primaria]} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[paleta.primaria]} />
           }
           renderItem={({ item }) => (
             <CardProduto
@@ -132,11 +156,13 @@ export default function ProdutosScreen() {
           )}
           ListEmptyComponent={() => (
             <View style={styles.vazio}>
-              <MaterialIcons name="inventory-2" size={48} color={cores.borda} />
-              <Text style={styles.vazioTexto}>
+              <MaterialIcons name="inventory-2" size={48} color={paleta.borda} />
+              <Text style={[styles.vazioTexto, { color: paleta.textoSecundario }]}>
                 {busca || categoriaSelecionada 
                   ? "Nenhum produto corresponde à busca." 
-                  : "Nenhum produto cadastrado ainda."}
+                  : somenteEstoqueBaixo
+                    ? "Nenhum produto com estoque baixo."
+                    : "Nenhum produto cadastrado ainda."}
               </Text>
             </View>
           )}
@@ -145,11 +171,11 @@ export default function ProdutosScreen() {
 
       {/* Botão Flutuante (FAB) */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: paleta.primaria, shadowColor: paleta.texto }]}
         onPress={() => router.push('/produto/novo')}
         activeOpacity={0.8}
       >
-        <MaterialIcons name="add" size={32} color="#FFF" />
+        <MaterialIcons name="add" size={32} color={paleta.textoSobreAcao} />
       </TouchableOpacity>
     </View>
   );
@@ -158,23 +184,20 @@ export default function ProdutosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
   },
   header: {
-    backgroundColor: cores.fundo,
     paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: cores.borda,
   },
   buscaContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
+    borderRadius: 12,
     marginHorizontal: 16,
     paddingHorizontal: 12,
-    height: 40,
+    height: 44,
+    borderWidth: 1,
   },
   iconeBusca: {
     marginRight: 8,
@@ -182,33 +205,38 @@ const styles = StyleSheet.create({
   buscaInput: {
     flex: 1,
     height: 40,
-    color: cores.texto,
+    fontSize: 15,
   },
   filtrosContainer: {
     marginTop: 12,
+    paddingHorizontal: 12,
   },
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
     marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: cores.borda,
-  },
-  chipAtivo: {
-    backgroundColor: cores.primaria,
-    borderColor: cores.primaria,
   },
   chipTexto: {
-    color: cores.texto,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '600',
   },
-  chipTextoAtivo: {
-    color: '#FFF',
-    fontWeight: 'bold',
+  filtroEstoqueBaixo: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderRadius: 999,
   },
+  filtroEstoqueBaixoTexto: { fontSize: 12, fontWeight: '700' },
   listaContainer: {
+    flexGrow: 1,
     paddingBottom: 80,
     paddingTop: 8,
   },
@@ -221,23 +249,21 @@ const styles = StyleSheet.create({
   vazioTexto: {
     marginTop: 12,
     fontSize: 16,
-    color: cores.texto,
-    opacity: 0.6,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
   fab: {
     position: 'absolute',
     right: 16,
     bottom: 16,
-    backgroundColor: cores.primaria,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
   }
 });

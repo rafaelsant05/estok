@@ -15,7 +15,7 @@ O **Estok** permite cadastrar produtos, registrar entradas e saídas, receber o 
 
 - [x] Cadastro e login de usuários (Firebase Authentication), com validação dos campos
 - [x] Cada usuário enxerga apenas os próprios dados
-- [x] Navegação com Stack e Bottom Tabs (Início, Produtos e Movimentações)
+- [x] Navegação com Stack e Bottom Tabs (Início, Produtos, Movimentações e Configurações)
 - [x] Lista de produtos com busca por nome e filtro por categoria, com destaque para estoque baixo
 - [x] Cadastro e edição de produtos com validação
 - [x] Entradas e saídas de estoque, com histórico e filtro por tipo
@@ -24,6 +24,7 @@ O **Estok** permite cadastrar produtos, registrar entradas e saídas, receber o 
 - [x] Leitura de código de barras com a câmera, com campo para digitar o código manualmente
 - [x] Notificação local de estoque baixo
 - [x] Foto do produto (galeria ou câmera)
+- [x] Perfil de usuário com foto, CPF, papel e loja, além de tema claro/escuro
 
 ## Requisitos do projeto e onde estão no código
 
@@ -110,12 +111,13 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Abra o `.env` e preencha com os valores do `firebaseConfig`, **sem aspas e sem espaços**:
+Abra o `.env` e preencha com os valores do `firebaseConfig`, **sem aspas e sem espaços**. O bucket do Storage é opcional; sem ele, a foto de perfil é mantida localmente:
 
 ```
 EXPO_PUBLIC_FIREBASE_API_KEY=sua_api_key
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=seu-projeto.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=seu-projeto
+# Opcional: necessário para sincronizar fotos de perfil.
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=seu-projeto.firebasestorage.app
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=000000000000
 EXPO_PUBLIC_FIREBASE_APP_ID=1:000000000000:web:xxxxxxxxxxxxxxxx
@@ -146,7 +148,7 @@ npx expo start --web --clear
 
 1. Abra o app e toque em **Criar conta**.
 2. Cadastre um e-mail e uma senha com no mínimo 6 caracteres.
-3. Você será levado às abas **Início**, **Produtos** e **Movimentações**.
+3. Você será levado às abas **Início**, **Produtos**, **Movimentações** e **Configurações**.
 4. O usuário aparece em **Authentication → Usuários** no console do Firebase.
 
 ## Roteiro de uso
@@ -165,8 +167,12 @@ Depois que o modo de teste expirar, publique estas regras em **Firestore Databas
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
+    match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }
@@ -180,15 +186,14 @@ estok/
 │   ├── app/
 │   │   ├── _layout.tsx             # Stack raiz e redirecionamento por login
 │   │   ├── (auth)/                 # login.tsx e cadastro.tsx
-│   │   ├── (tabs)/                 # index.tsx (Início), produtos.tsx e movimentacoes.tsx
+│   │   ├── (tabs)/                 # Início, Produtos, Movimentações e Configurações
 │   │   ├── produto/                # novo.tsx e [id].tsx
 │   │   └── scanner.tsx             # Leitor de código de barras
 │   ├── components/                 # Botao, Input, Loading, Feedback, CardProduto,
 │   │                               # CardMovimentacao, FormMovimentacao,
 │   │                               # ResumoCard e ItemEstoqueBaixo
-│   ├── services/                   # firebase.ts, authErros.ts, produtosService.ts,
-│   │                               # movimentacoesService.ts e notificacoes.ts
-│   ├── store/                      # useAuthStore.ts e useProdutosStore.ts
+│   ├── services/                   # Firebase, perfil, produtos, movimentações e notificações
+│   ├── store/                      # useAuthStore, useThemeStore e useProdutosStore
 │   ├── types/                      # Tipos TypeScript (Produto, Movimentacao)
 │   └── constants/                  # Cores do app
 ├── .env.example                    # Modelo das variáveis do Firebase
@@ -198,6 +203,10 @@ estok/
 ## Modelo de dados (Firestore)
 
 ```
+users/{uid}
+    displayName, photoUrl, cpf, role, storeName (opcional),
+    defaultMinStock (opcional), updatedAt
+
 users/{uid}/produtos/{produtoId}
     nome, categoria, quantidade, estoqueMinimo,
     codigoBarras (opcional), fotoUri (opcional), criadoEm

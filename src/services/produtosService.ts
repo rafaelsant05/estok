@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Produto } from '../types';
+import { normalizarCodigoBarras } from '../utils/negocio';
 
 type DadosProduto = Omit<Produto, 'id' | 'criadoEm'>;
 
@@ -64,8 +65,9 @@ export async function buscarProduto(uid: string, id: string): Promise<Produto | 
 
 export async function buscarPorCodigoBarras(uid: string, codigo: string): Promise<Produto | null> {
   try {
+    const codigoNormalizado = normalizarCodigoBarras(codigo);
     const resultado = await getDocs(
-      query(produtosRef(uid), where('codigoBarras', '==', codigo)),
+      query(produtosRef(uid), where('codigoBarras', '==', codigoNormalizado)),
     );
     const item = resultado.docs[0];
     return item ? ({ id: item.id, ...item.data() } as Produto) : null;
