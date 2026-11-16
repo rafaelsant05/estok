@@ -12,28 +12,21 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
+import { signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
+import { auth } from '../../services/firebase';
 import Botao from '../../components/Botao';
 import Feedback from '../../components/Feedback';
 import Input from '../../components/Input';
 import { PerfilUsuario, criarPerfilPadrao, useAuthStore } from '../../store/useAuthStore';
-import { PALETAS_TEMA, Tema, useThemeStore } from '../../store/useThemeStore';
+import { PALETAS_TEMA, useThemeStore } from '../../store/useThemeStore';
 import { salvarFotoPerfil, salvarPerfilUsuario } from '../../services/perfilService';
 
-const PAPEIS = ['Proprietário(a)', 'Gerente', 'Estoquista', 'Vendedor(a)'] as const;
-const OUTRO_PAPEL = 'Outro';
 const PERFIL_VAZIO = criarPerfilPadrao();
-
-function formatarCpf(valor: string) {
-  const digitos = valor.replace(/\D/g, '').slice(0, 11);
-  return digitos
-    .replace(/^(\d{3})(\d)/, '$1.$2')
-    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1-$2');
-}
 
 export default function ConfiguracoesScreen() {
   const carregandoPerfil = useAuthStore((estado) => estado.carregandoPerfil);
@@ -74,6 +67,7 @@ function FormularioConfiguracoes({
   user: User | null;
   perfilInicial: PerfilUsuario;
 }) {
+  const router = useRouter();
   const [formulario, setFormulario] = useState<PerfilUsuario>(perfilInicial);
   const erroPerfil = useAuthStore((estado) => estado.erroPerfil);
   const definirPerfil = useAuthStore((estado) => estado.setPerfil);
@@ -81,13 +75,10 @@ function FormularioConfiguracoes({
   const logout = useAuthStore((estado) => estado.logout);
   const definirTema = useThemeStore((estado) => estado.setTema);
   const tema = useThemeStore((estado) => estado.tema);
-  const preferenciaTema = useThemeStore((estado) => estado.preferencia);
   const cores = PALETAS_TEMA[tema];
   const [carregandoFoto, setCarregandoFoto] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const [outroPapelSelecionado, setOutroPapelSelecionado] = useState(
-    () => !!perfilInicial.role && !PAPEIS.includes(perfilInicial.role as (typeof PAPEIS)[number]),
-  );
+  const [saindo, setSaindo] = useState(false);
   const [feedback, setFeedback] = useState<{
     tipo: 'sucesso' | 'erro' | 'aviso';
     mensagem: string;
@@ -158,10 +149,6 @@ function FormularioConfiguracoes({
       setFeedback({ tipo: 'erro', mensagem: 'Informe o nome de usuário.' });
       return;
     }
-    if (formulario.cpf.replace(/\D/g, '').length !== 11) {
-      setFeedback({ tipo: 'erro', mensagem: 'Informe um CPF válido com 11 dígitos.' });
-      return;
-    }
     if (
       formulario.defaultMinStock !== null &&
       (!Number.isSafeInteger(formulario.defaultMinStock) || formulario.defaultMinStock < 0)
@@ -176,8 +163,6 @@ function FormularioConfiguracoes({
     const perfil: PerfilUsuario = {
       ...formulario,
       displayName: formulario.displayName.trim(),
-      cpf: formatarCpf(formulario.cpf),
-      role: formulario.role.trim(),
       storeName: formulario.storeName.trim(),
     };
 
@@ -214,22 +199,45 @@ function FormularioConfiguracoes({
     }
   }
 
+  async function sairDaConta() {
+    if (saindo) return;
+    setSaindo(true);
+    const uid = user?.uid;
+
+    try {
+      await signOut(auth);
+      await logout({ firebaseJaDesconectado: true, uid });
+      router.replace('/(auth)/login');
+    } catch {
+      const sessaoEncerrada = !useAuthStore.getState().user;
+      if (sessaoEncerrada) router.replace('/(auth)/login');
+
+      const mensagem = sessaoEncerrada
+        ? 'Você saiu da conta, mas não foi possível limpar os dados salvos neste dispositivo.'
+        : 'Não foi possível desconectar. Tente novamente.';
+      if (Platform.OS === 'web') {
+        window.alert(mensagem);
+      } else {
+        Alert.alert(sessaoEncerrada ? 'Dados locais' : 'Erro ao sair', mensagem);
+      }
+    } finally {
+      setSaindo(false);
+    }
+  }
+
   function confirmarSaida() {
-    Alert.alert('Sair da conta', 'Deseja realmente desconectar?', [
+    const mensagem = 'Deseja realmente desconectar?';
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Sair da conta\n\n${mensagem}`)) void sairDaConta();
+      return;
+    }
+
+    Alert.alert('Sair da conta', mensagem, [
       { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: () => {
-          void logout().catch(() =>
-            Alert.alert('Erro ao sair', 'Não foi possível desconectar. Tente novamente.'),
-          );
-        },
-      },
+      { text: 'Sair', style: 'destructive', onPress: () => void sairDaConta() },
     ]);
   }
 
-  const papelConhecido = PAPEIS.includes(formulario.role as (typeof PAPEIS)[number]);
   const inicial =
     formulario.displayName.trim().charAt(0).toLocaleUpperCase('pt-BR') ||
     user?.email?.charAt(0).toLocaleUpperCase('pt-BR') ||
@@ -292,62 +300,12 @@ function FormularioConfiguracoes({
               editable={!salvando}
             />
             <Input
-              label="CPF"
-              value={formulario.cpf}
-              onChangeText={(valor) => atualizar('cpf', formatarCpf(valor))}
-              placeholder="000.000.000-00"
-              keyboardType="numeric"
-              maxLength={14}
-              editable={!salvando}
+              label="E-mail"
+              value={user?.email ?? ''}
+              editable={false}
             />
-
-            <Text style={[styles.rotulo, { color: cores.texto }]}>Papel na empresa</Text>
-            <View style={styles.papeis}>
-              {[...PAPEIS, OUTRO_PAPEL].map((papel) => {
-                const ativo =
-                  papel === OUTRO_PAPEL
-                    ? outroPapelSelecionado
-                    : formulario.role === papel;
-                return (
-                  <Pressable
-                    key={papel}
-                    onPress={() => {
-                      if (papel === OUTRO_PAPEL) {
-                        setOutroPapelSelecionado(true);
-                        if (papelConhecido) atualizar('role', '');
-                      } else {
-                        setOutroPapelSelecionado(false);
-                        atualizar('role', papel);
-                      }
-                    }}
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor: ativo ? cores.primaria : cores.superficie,
-                        borderColor: ativo ? cores.primaria : cores.borda,
-                      },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: ativo }}
-                  >
-                    <Text style={[styles.textoChip, { color: ativo ? cores.textoSobreAcao : cores.texto }]}>
-                      {papel}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            {outroPapelSelecionado && (
-              <Input
-                label="Outro papel"
-                value={formulario.role}
-                onChangeText={(valor) => atualizar('role', valor)}
-                placeholder="Informe seu papel"
-                editable={!salvando}
-              />
-            )}
             <Input
-              label="Nome da loja (opcional)"
+              label="Nome da loja/unidade (opcional)"
               value={formulario.storeName}
               onChangeText={(valor) => atualizar('storeName', valor)}
               placeholder="Ex.: Estok Centro"
@@ -362,13 +320,12 @@ function FormularioConfiguracoes({
               {([
                 ['light', 'Claro', 'sunny-outline'],
                 ['dark', 'Escuro', 'moon-outline'],
-                ['system', 'Sistema', 'phone-portrait-outline'],
               ] as const).map(([valor, rotulo, icone]) => {
-                const ativo = preferenciaTema === valor;
+                const ativo = tema === valor;
                 return (
                   <Pressable
                     key={valor}
-                    onPress={() => definirTema(valor as Tema)}
+                    onPress={() => definirTema(valor)}
                     style={[
                       styles.opcaoTema,
                       {
@@ -410,6 +367,7 @@ function FormularioConfiguracoes({
             <Botao
               titulo="Sair da conta"
               onPress={confirmarSaida}
+              carregando={saindo}
               variante="perigo"
               icone="log-out-outline"
             />
@@ -417,6 +375,9 @@ function FormularioConfiguracoes({
 
           <Text style={[styles.versao, { color: cores.textoSecundario }]}>
             Estok • versão {versao}
+          </Text>
+          <Text style={[styles.rodape, { color: cores.textoSecundario }]}>
+            © 2026 Estok • Desenvolvido por Rafael Carvalho, Rickson Figueiredo, Jonathan Marinho e Bruno França
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -459,9 +420,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   rotulo: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
-  papeis: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  chip: { borderWidth: 1, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 },
-  textoChip: { fontSize: 13, fontWeight: '600' },
   temas: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   opcaoTema: {
     flex: 1,
@@ -477,4 +435,5 @@ const styles = StyleSheet.create({
   acoes: { marginTop: 4 },
   espaco: { height: 12 },
   versao: { textAlign: 'center', marginTop: 20, fontSize: 12 },
+  rodape: { textAlign: 'center', marginTop: 6, fontSize: 10 },
 });

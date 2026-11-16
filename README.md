@@ -24,7 +24,9 @@ O **Estok** permite cadastrar produtos, registrar entradas e saídas, receber o 
 - [x] Leitura de código de barras com a câmera, com campo para digitar o código manualmente
 - [x] Notificação local de estoque baixo
 - [x] Foto do produto (galeria ou câmera)
-- [x] Perfil de usuário com foto, CPF, papel e loja, além de tema claro/escuro
+- [x] Perfil de usuário com nome, e-mail, foto, loja/unidade e estoque mínimo padrão, além de tema claro/escuro
+- [x] Cadastro com senha forte e onboarding de boas-vindas para novos usuários
+- [x] Aviso de privacidade e página informativa sobre a LGPD
 
 ## Requisitos do projeto e onde estão no código
 
@@ -95,9 +97,9 @@ npm install
 1. Acesse o [console do Firebase](https://console.firebase.google.com) e clique em **Criar um projeto** (por exemplo, `estok`).
 2. Na visão geral do projeto, clique no ícone **Web** (`</>`) e registre um app (por exemplo, `estok-web`). Copie os valores do objeto `firebaseConfig`.
 3. Em **Authentication**, clique em **Vamos começar**, abra **E-mail/senha**, ative a primeira opção e salve.
-4. Em **Firestore Database**, clique em **Criar banco de dados**, escolha uma região (por exemplo, `southamerica-east1`) e inicie no **modo de teste**.
+4. Em **Firestore Database**, clique em **Criar banco de dados** e escolha uma região (por exemplo, `southamerica-east1`). Antes de usar o app, publique as regras do arquivo `firestore.rules`; não mantenha regras abertas de teste em produção.
 
-> O modo de teste do Firestore libera o acesso por 30 dias. Depois disso, publique as regras da seção [Regras de segurança do Firestore](#regras-de-segurança-do-firestore).
+O arquivo `firebase.json` aponta para `firestore.rules`. Publique essas regras pelo console do Firebase ou pela Firebase CLI antes de disponibilizar o app.
 
 ### 4. Criar o arquivo `.env`
 
@@ -147,9 +149,9 @@ npx expo start --web --clear
 ### 6. Primeiro acesso
 
 1. Abra o app e toque em **Criar conta**.
-2. Cadastre um e-mail e uma senha com no mínimo 6 caracteres.
-3. Você será levado às abas **Início**, **Produtos**, **Movimentações** e **Configurações**.
-4. O usuário aparece em **Authentication → Usuários** no console do Firebase.
+2. Informe nome, e-mail e uma senha com no mínimo 8 caracteres, letra maiúscula, número e caractere especial.
+3. Após o cadastro, dê boas-vindas ao Estok e configure seu nome e, se quiser, uma foto de perfil.
+4. Ao concluir o onboarding, você terá acesso às abas **Início**, **Produtos**, **Movimentações** e **Configurações**.
 
 ## Roteiro de uso
 
@@ -161,22 +163,7 @@ npx expo start --web --clear
 
 ## Regras de segurança do Firestore
 
-Depois que o modo de teste expirar, publique estas regras em **Firestore Database → Regras**. Elas permitem que cada usuário leia e grave apenas os próprios dados:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-
-      match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-  }
-}
-```
+O arquivo [`firestore.rules`](./firestore.rules) permite que cada usuário autenticado crie, leia e atualize o próprio documento e acesse somente seus produtos e movimentações. Publique-o em **Firestore Database → Regras** antes de usar o app.
 
 ## Estrutura do projeto
 
@@ -187,7 +174,10 @@ estok/
 │   │   ├── _layout.tsx             # Stack raiz e redirecionamento por login
 │   │   ├── (auth)/                 # login.tsx e cadastro.tsx
 │   │   ├── (tabs)/                 # Início, Produtos, Movimentações e Configurações
+│   │   ├── boas-vindas.tsx         # Apresentação para novos usuários
+│   │   ├── configurar-perfil.tsx   # Nome e foto no primeiro acesso
 │   │   ├── produto/                # novo.tsx e [id].tsx
+│   │   ├── lgpd.tsx                # Aviso de privacidade
 │   │   └── scanner.tsx             # Leitor de código de barras
 │   ├── components/                 # Botao, Input, Loading, Feedback, CardProduto,
 │   │                               # CardMovimentacao, FormMovimentacao,
@@ -204,8 +194,8 @@ estok/
 
 ```
 users/{uid}
-    displayName, photoUrl, cpf, role, storeName (opcional),
-    defaultMinStock (opcional), updatedAt
+    nome, email, criadoEm, onboardingConcluido,
+    photoUrl, storeName (opcional), defaultMinStock (opcional), updatedAt
 
 users/{uid}/produtos/{produtoId}
     nome, categoria, quantidade, estoqueMinimo,
@@ -252,3 +242,5 @@ Um produto está com **estoque baixo** quando `quantidade <= estoqueMinimo`.
 ## Licença
 
 Projeto acadêmico. Consulte o arquivo [LICENSE](LICENSE).
+
+© 2026 Estok • Desenvolvido por Rafael Carvalho, Rickson Figueiredo, Jonathan Marinho e Bruno França

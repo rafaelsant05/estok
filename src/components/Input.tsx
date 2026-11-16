@@ -6,9 +6,17 @@ type Props = TextInputProps & {
   label: string;
   erro?: string;
   rightAction?: ReactNode;
+  rightActionInside?: boolean;
 };
 
-export default function Input({ label, erro, style, rightAction, ...resto }: Props) {
+export default function Input({
+  label,
+  erro,
+  style,
+  rightAction,
+  rightActionInside = false,
+  ...resto
+}: Props) {
   const tema = useThemeStore((estado) => estado.tema);
   const cores = PALETAS_TEMA[tema];
   const campo = (
@@ -24,11 +32,34 @@ export default function Input({ label, erro, style, rightAction, ...resto }: Pro
       {...resto}
     />
   );
+  const campoComAcaoInterna = (
+    <View
+      style={[
+        estilos.inputComAcaoInterna,
+        { borderColor: cores.borda, backgroundColor: cores.card },
+        !!erro && { borderColor: cores.erro },
+      ]}
+    >
+      <TextInput
+        placeholderTextColor={cores.desabilitado}
+        style={[
+          estilos.input,
+          estilos.inputInterno,
+          { color: cores.texto, backgroundColor: 'transparent' },
+          style,
+        ]}
+        {...resto}
+      />
+      {rightAction}
+    </View>
+  );
 
   return (
     <View style={estilos.container}>
       <Text style={[estilos.label, { color: cores.texto }]}>{label}</Text>
-      {rightAction ? (
+      {rightAction && rightActionInside ? (
+        campoComAcaoInterna
+      ) : rightAction ? (
         <View style={estilos.linhaInput}>
           {campo}
           {rightAction}
@@ -53,5 +84,13 @@ const estilos = StyleSheet.create({
     fontSize: 16,
   },
   inputComAcao: { flex: 1 },
+  inputComAcaoInterna: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  inputInterno: { flex: 1, height: 46, borderWidth: 0, paddingRight: 0 },
   erro: { fontSize: 13, marginTop: 4 },
 });

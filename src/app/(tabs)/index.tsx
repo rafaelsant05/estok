@@ -13,8 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { signOut } from 'firebase/auth';
-import { auth } from '../../services/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useProdutosStore } from '../../store/useProdutosStore';
 import { PALETAS_TEMA, useThemeStore } from '../../store/useThemeStore';
@@ -25,6 +23,7 @@ import Loading from '../../components/Loading';
 import Feedback from '../../components/Feedback';
 import ResumoCard from '../../components/ResumoCard';
 import ItemEstoqueBaixo from '../../components/ItemEstoqueBaixo';
+import LogoEstok from '../../components/LogoEstok';
 import Botao from '../../components/Botao';
 import FormMovimentacao from '../../components/FormMovimentacao';
 import { notificarEstoqueBaixo } from '../../services/notificacoes';
@@ -75,9 +74,7 @@ export default function Inicio() {
   );
   const saudacao = obterSaudacao(agora);
   const dataAtual = formatarData(agora);
-  const subtituloPerfil =
-    [perfil?.role, perfil?.storeName].filter(Boolean).join(' • ') ||
-    'Resumo do seu estoque';
+  const subtituloPerfil = perfil?.storeName || 'Resumo do seu estoque';
 
   const [atualizando, setAtualizando] = useState(false); // pull to refresh
   const [erroVisivel, setErroVisivel] = useState(true);
@@ -90,8 +87,8 @@ export default function Inicio() {
   useLayoutEffect(() => {
     async function sairDaConta() {
       try {
-        await signOut(auth);
-        await logout({ firebaseJaDesconectado: true });
+        await logout({ uid: user?.uid });
+        router.replace('/(auth)/login');
       } catch {
         Alert.alert('Erro ao sair', 'Não foi possível desconectar. Tente novamente.');
       }
@@ -115,7 +112,7 @@ export default function Inicio() {
         </Pressable>
       ),
     });
-  }, [logout, navigation, cores.primaria]);
+  }, [logout, navigation, cores.primaria, router, user?.uid]);
 
   const carregarAtividade = useCallback(async (uid: string) => {
     try {
@@ -192,42 +189,47 @@ export default function Inicio() {
           { borderColor: cores.borda, backgroundColor: cores.card },
         ]}
       >
-        <Pressable
-          style={styles.perfilTopo}
-          onPress={() => router.push('/(tabs)/configuracoes')}
-          accessibilityRole="button"
-          accessibilityLabel="Abrir configurações do perfil"
-        >
-          {fotoUsuario ? (
-            <Image source={{ uri: fotoUsuario }} style={styles.avatarImagem} />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: cores.superficie }]}>
-              <Text style={[styles.avatarInicial, { color: cores.primaria }]}>
-                {nomeUsuario.charAt(0).toLocaleUpperCase('pt-BR')}
+        <View style={styles.logoCentralizada}>
+          <LogoEstok tamanho="md" />
+        </View>
+        <View style={styles.linhaPerfilTopo}>
+          <Pressable
+            style={styles.perfilTopo}
+            onPress={() => router.push('/(tabs)/configuracoes')}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir configurações do perfil"
+          >
+            {fotoUsuario ? (
+              <Image source={{ uri: fotoUsuario }} style={styles.avatarImagem} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: cores.superficie }]}>
+                <Text style={[styles.avatarInicial, { color: cores.primaria }]}>
+                  {nomeUsuario.charAt(0).toLocaleUpperCase('pt-BR')}
+                </Text>
+              </View>
+            )}
+            <View style={styles.textosSaudacao}>
+              <Text style={[styles.saudacao, { color: cores.texto }]} numberOfLines={1}>
+                {saudacao}, {nomeUsuario}
+              </Text>
+              <Text style={[styles.dataAtual, { color: cores.textoSecundario }]}>{dataAtual}</Text>
+              <Text style={[styles.subtitulo, { color: cores.textoSecundario }]} numberOfLines={1}>
+                {subtituloPerfil}
               </Text>
             </View>
-          )}
-          <View style={styles.textosSaudacao}>
-            <Text style={[styles.saudacao, { color: cores.texto }]} numberOfLines={1}>
-              {saudacao}, {nomeUsuario}
-            </Text>
-            <Text style={[styles.dataAtual, { color: cores.textoSecundario }]}>{dataAtual}</Text>
-            <Text style={[styles.subtitulo, { color: cores.textoSecundario }]} numberOfLines={1}>
-              {subtituloPerfil}
-            </Text>
-          </View>
-        </Pressable>
-        <Pressable
-          style={styles.botaoNotificacoes}
-          onPress={() => setAlertasAberto(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`Abrir alertas de estoque, ${estoqueBaixo.length} itens críticos`}
-        >
-          <Ionicons name="notifications-outline" size={22} color={cores.icone} />
-          {estoqueBaixo.length > 0 && (
-            <View style={[styles.pontoNotificacao, { backgroundColor: cores.erro }]} />
-          )}
-        </Pressable>
+          </Pressable>
+          <Pressable
+            style={styles.botaoNotificacoes}
+            onPress={() => setAlertasAberto(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir alertas de estoque, ${estoqueBaixo.length} itens críticos`}
+          >
+            <Ionicons name="notifications-outline" size={22} color={cores.icone} />
+            {estoqueBaixo.length > 0 && (
+              <View style={[styles.pontoNotificacao, { backgroundColor: cores.erro }]} />
+            )}
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.resumoTopo}>
@@ -502,18 +504,18 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   cabecalhoSaudacao: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
+    gap: 0,
+    padding: 12,
     marginBottom: 18,
     borderWidth: 1,
     borderRadius: 16,
   },
-  perfilTopo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  logoCentralizada: { alignItems: 'center', width: '100%', marginBottom: 12 },
+  linhaPerfilTopo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  perfilTopo: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
   botaoNotificacoes: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
@@ -527,18 +529,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarImagem: { width: 52, height: 52, borderRadius: 26 },
-  avatarInicial: { fontSize: 22, fontWeight: '800' },
-  textosSaudacao: { flex: 1 },
-  saudacao: { fontSize: 17, fontWeight: '700' },
-  dataAtual: { marginTop: 4, fontSize: 12 },
-  subtitulo: { marginTop: 2, fontSize: 12 },
+  avatarImagem: { width: 40, height: 40, borderRadius: 20 },
+  avatarInicial: { fontSize: 18, fontWeight: '800' },
+  textosSaudacao: { flex: 1, minWidth: 0 },
+  saudacao: { fontSize: 15, fontWeight: '700' },
+  dataAtual: { marginTop: 4, fontSize: 11 },
+  subtitulo: { marginTop: 2, fontSize: 11 },
   resumoTopo: { marginBottom: 18 },
   rotuloResumo: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   botaoSair: {

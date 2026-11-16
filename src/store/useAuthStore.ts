@@ -1,22 +1,21 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import { chavePerfilStorage } from '../constants/storageKeys';
 
 export type PerfilUsuario = {
   displayName: string;
   photoUrl: string | null;
-  cpf: string;
-  role: string;
   storeName: string;
   defaultMinStock: number | null;
+  onboardingConcluido?: boolean;
 };
 
 export function criarPerfilPadrao(user?: User | null): PerfilUsuario {
   return {
     displayName: user?.displayName ?? '',
     photoUrl: user?.photoURL ?? null,
-    cpf: '',
-    role: '',
     storeName: '',
     defaultMinStock: null,
   };
@@ -24,6 +23,7 @@ export function criarPerfilPadrao(user?: User | null): PerfilUsuario {
 
 type LogoutOptions = {
   firebaseJaDesconectado?: boolean;
+  uid?: string;
 };
 
 type AuthState = {
@@ -40,7 +40,7 @@ type AuthState = {
   logout: (options?: LogoutOptions) => Promise<void>;
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   perfil: criarPerfilPadrao(),
   perfilUid: null,
@@ -74,31 +74,54 @@ export const useAuthStore = create<AuthState>((set) => ({
       };
     }),
   setPerfil: (uid, perfil) =>
-    set((estado) =>
-      estado.user?.uid === uid
-        ? { perfil, perfilUid: uid, carregandoPerfil: false }
-        : estado,
-    ),
+    set((estado) => {
+      if (estado.user?.uid !== uid) return estado;
+      const onboardingConcluido =
+        perfil.onboardingConcluido === undefined &&
+        typeof estado.perfil.onboardingConcluido === 'boolean'
+          ? estado.perfil.onboardingConcluido
+          : perfil.onboardingConcluido;
+      return {
+        perfil: { ...perfil, onboardingConcluido },
+        perfilUid: uid,
+        carregandoPerfil: false,
+      };
+    }),
   setErroPerfil: (erroPerfil) => set({ erroPerfil }),
   setCarregando: (carregando) => set({ carregando }),
-  logout: async ({ firebaseJaDesconectado = false } = {}) => {
+  logout: async ({ firebaseJaDesconectado = false, uid: uidInformado } = {}) => {
+    const uid = uidInformado ?? get().user?.uid;
     set({ carregando: true });
 
     try {
       if (!firebaseJaDesconectado) {
         await signOut(auth);
       }
-      set({
-        user: null,
-        perfil: criarPerfilPadrao(),
-        perfilUid: null,
-        carregandoPerfil: false,
-        erroPerfil: null,
-        carregando: false,
-      });
     } catch (erro) {
       set({ carregando: false });
       throw erro;
+    }
+
+    let erroCache: unknown;
+    if (uid) {
+      try {
+        await AsyncStorage.removeItem(chavePerfilStorage(uid));
+      } catch (erro) {
+        erroCache = erro;
+      }
+    }
+
+    set({
+      user: null,
+      perfil: criarPerfilPadrao(),
+      perfilUid: null,
+      carregandoPerfil: false,
+      erroPerfil: null,
+      carregando: false,
+    });
+
+    if (erroCache) {
+      throw new Error('A sessão foi encerrada, mas não foi possível remover o perfil salvo neste dispositivo.');
     }
   },
 }));

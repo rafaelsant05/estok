@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  deleteField,
   doc,
   getDoc,
   serverTimestamp,
@@ -15,8 +16,7 @@ import {
 } from 'firebase/storage';
 import { auth, app, db, firebaseConfig } from './firebase';
 import { criarPerfilPadrao, PerfilUsuario } from '../store/useAuthStore';
-
-const CHAVE_PERFIL = 'estok:perfil:';
+import { chavePerfilStorage } from '../constants/storageKeys';
 
 type PerfilEmCache = {
   perfil: PerfilUsuario;
@@ -34,10 +34,6 @@ export type ResultadoFoto = {
   erro?: unknown;
 };
 
-function chavePerfil(uid: string) {
-  return `${CHAVE_PERFIL}${uid}`;
-}
-
 function texto(valor: unknown, fallback: string): string {
   return typeof valor === 'string' ? valor : fallback;
 }
@@ -50,24 +46,28 @@ function estoqueMinimo(valor: unknown): number | null {
 
 async function lerCache(uid: string): Promise<PerfilEmCache | null> {
   try {
-    const salvo = await AsyncStorage.getItem(chavePerfil(uid));
+    const salvo = await AsyncStorage.getItem(chavePerfilStorage(uid));
     if (!salvo) return null;
 
     const dados = JSON.parse(salvo) as Partial<PerfilEmCache>;
     if (!dados.perfil || typeof dados.perfil !== 'object') return null;
     const campos = dados.perfil as Partial<PerfilUsuario>;
 
-    return {
-      perfil: {
-        displayName: texto(campos.displayName, ''),
-        photoUrl: typeof campos.photoUrl === 'string' ? campos.photoUrl : null,
-        cpf: texto(campos.cpf, ''),
-        role: texto(campos.role, ''),
-        storeName: texto(campos.storeName, ''),
-        defaultMinStock: estoqueMinimo(campos.defaultMinStock),
-      },
-      sincronizacaoPendente: dados.sincronizacaoPendente === true,
+    const perfil: PerfilUsuario = {
+      displayName: texto(campos.displayName, ''),
+      photoUrl: typeof campos.photoUrl === 'string' ? campos.photoUrl : null,
+      storeName: texto(campos.storeName, ''),
+      defaultMinStock: estoqueMinimo(campos.defaultMinStock),
+      onboardingConcluido:
+        typeof campos.onboardingConcluido === 'boolean'
+          ? campos.onboardingConcluido
+          : undefined,
     };
+    const sincronizacaoPendente = dados.sincronizacaoPendente === true;
+    if ('cpf' in campos || 'role' in campos) {
+      await salvarCache(uid, perfil, sincronizacaoPendente);
+    }
+    return { perfil, sincronizacaoPendente };
   } catch (erro) {
     console.warn('Não foi possível ler o perfil salvo neste dispositivo.', erro);
     return null;
@@ -80,7 +80,7 @@ async function salvarCache(
   sincronizacaoPendente: boolean,
 ) {
   await AsyncStorage.setItem(
-    chavePerfil(uid),
+    chavePerfilStorage(uid),
     JSON.stringify({ perfil, sincronizacaoPendente } satisfies PerfilEmCache),
   );
 }
@@ -92,15 +92,20 @@ function perfilDoFirestore(
 ): PerfilUsuario {
   const fotoRemota = texto(dados.photoUrl, '');
   return {
-    displayName: texto(dados.displayName, perfilLocal.displayName || perfilAuth.displayName),
+    displayName: texto(
+      dados.nome,
+      texto(dados.displayName, perfilLocal.displayName || perfilAuth.displayName),
+    ),
     photoUrl: fotoRemota || perfilLocal.photoUrl || perfilAuth.photoUrl,
-    cpf: texto(dados.cpf, perfilLocal.cpf),
-    role: texto(dados.role, perfilLocal.role),
     storeName: texto(dados.storeName, perfilLocal.storeName),
     defaultMinStock:
       dados.defaultMinStock === null
         ? null
         : estoqueMinimo(dados.defaultMinStock) ?? perfilLocal.defaultMinStock,
+    onboardingConcluido:
+      typeof dados.onboardingConcluido === 'boolean'
+        ? dados.onboardingConcluido
+        : undefined,
   };
 }
 
@@ -108,7 +113,14 @@ async function sincronizarPerfil(uid: string, perfil: PerfilUsuario) {
   await setDoc(
     doc(db, 'users', uid),
     {
-      ...perfil,
+      nome: perfil.displayName,
+      storeName: perfil.storeName,
+      defaultMinStock: perfil.defaultMinStock,
+      ...(typeof perfil.onboardingConcluido === 'boolean'
+        ? { onboardingConcluido: perfil.onboardingConcluido }
+        : {}),
+      cpf: deleteField(),
+      role: deleteField(),
       photoUrl: perfil.photoUrl?.startsWith('http') ? perfil.photoUrl : null,
       updatedAt: serverTimestamp(),
     },
@@ -128,25 +140,46 @@ export async function carregarPerfilUsuario(
     photoUrl: photoUrlAuth,
   };
 
-  if (cache?.sincronizacaoPendente) {
-    try {
-      await sincronizarPerfil(uid, cache.perfil);
-      await salvarCache(uid, cache.perfil, false);
-      return { perfil: cache.perfil };
-    } catch (erro) {
-      return { perfil: cache.perfil, erro };
-    }
-  }
-
   try {
     const snapshot = await getDoc(doc(db, 'users', uid));
     const dados = snapshot.exists() ? snapshot.data() : {};
+
+    if (snapshot.exists() && ('cpf' in dados || 'role' in dados)) {
+      try {
+        await setDoc(
+          doc(db, 'users', uid),
+          { cpf: deleteField(), role: deleteField() },
+          { merge: true },
+        );
+      } catch (erro) {
+        console.warn('Não foi possível remover campos legados do perfil.', erro);
+      }
+    }
+
+    if (!snapshot.exists() && cache?.sincronizacaoPendente) {
+      return { perfil: cache.perfil };
+    }
+
+    if (cache?.sincronizacaoPendente) {
+      try {
+        await sincronizarPerfil(uid, cache.perfil);
+        await salvarCache(uid, cache.perfil, false);
+        return { perfil: cache.perfil };
+      } catch (erro) {
+        return { perfil: cache.perfil, erro };
+      }
+    }
+
     const perfil = perfilDoFirestore(
       dados,
       cache?.perfil ?? criarPerfilPadrao(),
       perfilAuth,
     );
-    await salvarCache(uid, perfil, false);
+    try {
+      await salvarCache(uid, perfil, false);
+    } catch (erro) {
+      return { perfil, erro };
+    }
     return { perfil };
   } catch (erro) {
     return {
@@ -156,19 +189,28 @@ export async function carregarPerfilUsuario(
   }
 }
 
-export async function salvarPerfilUsuario(uid: string, perfil: PerfilUsuario) {
-  await salvarCache(uid, perfil, true);
-
-  try {
+export async function salvarPerfilUsuario(
+  uid: string,
+  perfil: PerfilUsuario,
+  exigirSincronizacao = false,
+) {
+  if (exigirSincronizacao) {
     await sincronizarPerfil(uid, perfil);
-  } catch (erro) {
-    return { sincronizado: false, erro };
-  }
-
-  try {
     await salvarCache(uid, perfil, false);
-  } catch (erro) {
-    console.warn('O perfil foi sincronizado, mas o cache local não foi atualizado.', erro);
+  } else {
+    await salvarCache(uid, perfil, true);
+
+    try {
+      await sincronizarPerfil(uid, perfil);
+    } catch (erro) {
+      return { sincronizado: false, erro };
+    }
+
+    try {
+      await salvarCache(uid, perfil, false);
+    } catch (erro) {
+      console.warn('O perfil foi sincronizado, mas o cache local não foi atualizado.', erro);
+    }
   }
 
   const usuarioAtual = auth.currentUser;
